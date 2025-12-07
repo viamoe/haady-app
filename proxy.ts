@@ -1,6 +1,6 @@
 import createMiddleware from 'next-intl/middleware';
 import { locales, defaultLocale } from './i18n/request';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const intlMiddleware = createMiddleware({
   locales,
@@ -11,6 +11,13 @@ const intlMiddleware = createMiddleware({
 });
 
 export function proxy(request: NextRequest) {
+  // For root route, bypass next-intl middleware to avoid any interference
+  // Locale is handled via cookies in the layout
+  if (request.nextUrl.pathname === '/') {
+    return NextResponse.next();
+  }
+  
+  // For all other routes, use next-intl middleware
   return intlMiddleware(request);
 }
 
