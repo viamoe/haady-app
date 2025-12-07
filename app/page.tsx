@@ -85,7 +85,13 @@ export default function JoinHaady() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError) {
+          console.error('Auth check error:', authError)
+          setIsCheckingAuth(false)
+          return
+        }
         
         if (user) {
           // Check if user is an admin first
