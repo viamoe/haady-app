@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
+import { getCurrentUser } from '@/lib/supabase/auth-helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -102,15 +103,22 @@ export default function CompleteProfile() {
   // Check auth on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        // Not logged in, redirect to login
-        router.push('/')
-        return
-      }
-      
-      setUserId(user.id)
+      try {
+        const { user, error: authError } = await getCurrentUser()
+        
+        if (authError) {
+          console.error('Auth error:', authError)
+          router.push('/')
+          return
+        }
+        
+        if (!user) {
+          // Not logged in, redirect to login
+          router.push('/')
+          return
+        }
+        
+        setUserId(user.id)
       
       // Check if user is an admin first - admins skip onboarding
       // Check both admin_users table and if user exists in auth but not in public.users
@@ -181,8 +189,16 @@ export default function CompleteProfile() {
       }
       
       setIsCheckingAuth(false)
+      } catch (error: any) {
+        console.error('Error checking auth:', error)
+        if (error?.message?.includes('session') || error?.message?.includes('JWT') || error?.message?.includes('Auth session missing')) {
+          router.push('/')
+          return
+        }
+        setIsCheckingAuth(false)
+      }
     }
-    
+
     checkAuth()
   }, [router])
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
+import { getCurrentUser } from '@/lib/supabase/auth-helpers'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/lib/toast'
 import { LanguageSwitcher } from '@/components/language-switcher'
@@ -34,12 +35,19 @@ export default function FavoriteBrands() {
   // Check auth on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        router.push('/')
-        return
-      }
+      try {
+        const { user, error: authError } = await getCurrentUser()
+        
+        if (authError) {
+          console.error('Auth error:', authError)
+          router.push('/')
+          return
+        }
+        
+        if (!user) {
+          router.push('/')
+          return
+        }
       
       setUserId(user.id)
       
@@ -115,10 +123,18 @@ export default function FavoriteBrands() {
       }
       
       setIsCheckingAuth(false)
+      } catch (error: any) {
+        console.error('Error checking auth:', error)
+        if (error?.message?.includes('session') || error?.message?.includes('JWT') || error?.message?.includes('Auth session missing')) {
+          router.push('/')
+          return
+        }
+        setIsCheckingAuth(false)
+      }
     }
-    
+
     checkAuth()
-  }, [router, t])
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

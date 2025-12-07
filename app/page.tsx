@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
+import { getCurrentUser } from '@/lib/supabase/auth-helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -85,7 +86,7 @@ export default function JoinHaady() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        const { user, error: authError } = await getCurrentUser()
         
         if (authError) {
           console.error('Auth check error:', authError)

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
+import { getCurrentUser } from '@/lib/supabase/auth-helpers'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/lib/toast'
 import { useLocale } from '@/i18n/context'
@@ -60,15 +61,12 @@ export default function Home() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        const { user, error: authError } = await getCurrentUser()
         
         if (authError) {
           console.error('Auth error:', authError)
-          // If session is missing, redirect to login
-          if (authError.message?.includes('session') || authError.message?.includes('JWT')) {
-            router.push('/')
-            return
-          }
+          router.push('/')
+          return
         }
         
         if (!user) {
@@ -148,7 +146,7 @@ export default function Home() {
         if (isAdmin) {
           // Admin users might not have a profile in public.users, that's okay
           // Create a minimal profile from auth user data
-          const { data: { user: authUser }, error: getUserError } = await supabase.auth.getUser()
+          const { user: authUser, error: getUserError } = await getCurrentUser()
           
           if (getUserError || !authUser) {
             console.error('Error getting auth user:', getUserError)
