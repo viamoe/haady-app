@@ -65,12 +65,12 @@ export default function Home() {
         
         if (authError) {
           console.error('Auth error:', authError)
-          router.push('/')
+          router.push('/login')
           return
         }
         
         if (!user) {
-          router.push('/')
+          router.push('/login')
           return
         }
         
@@ -150,7 +150,7 @@ export default function Home() {
           
           if (getUserError || !authUser) {
             console.error('Error getting auth user:', getUserError)
-            router.push('/')
+            router.push('/login')
             return
           }
           setProfile({
@@ -242,7 +242,7 @@ export default function Home() {
         console.error('Error checking auth:', error)
         // If it's a session error, redirect to login
         if (error?.message?.includes('session') || error?.message?.includes('JWT') || error?.message?.includes('Auth session missing')) {
-          router.push('/')
+          router.push('/login')
           return
         }
         setIsCheckingAuth(false)
@@ -273,7 +273,7 @@ export default function Home() {
       setColors([])
 
       // Redirect to login page
-      router.push('/')
+      router.push('/login')
       router.refresh() // Force refresh to clear any cached data
     } catch (error: any) {
       console.error('Error signing out:', error)

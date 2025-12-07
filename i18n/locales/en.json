@@ -138,5 +138,32 @@
     "otpSendFailed": "Failed to send OTP",
     "otpResent": "OTP resent successfully",
     "otpVerificationFailed": "OTP verification failed"
+  },
+  "landing": {
+    "signIn": "Sign In",
+    "getStarted": "Get Started",
+    "learnMore": "Learn More",
+    "heroTitle": "Share Joy, Gift Happiness",
+    "heroSubtitle": "Discover the perfect way to celebrate life's moments with thoughtful gifts that create lasting memories.",
+    "featuresTitle": "Why Choose Haady?",
+    "featuresSubtitle": "Experience the joy of giving with our personalized gift recommendations",
+    "feature1Title": "Personalized Recommendations",
+    "feature1Desc": "AI-powered suggestions based on personality, preferences, and occasions",
+    "feature2Title": "Thoughtful Gifting",
+    "feature2Desc": "Find the perfect gift that shows you care and understand their style",
+    "feature3Title": "Easy & Fast",
+    "feature3Desc": "Quick setup, seamless experience, and instant gift ideas",
+    "feature4Title": "Connect with Friends",
+    "feature4Desc": "Share your gift lists and discover what your friends love",
+    "feature5Title": "Smart Reminders",
+    "feature5Desc": "Never miss a special occasion with personalized event reminders",
+    "feature6Title": "Curated Collections",
+    "feature6Desc": "Explore handpicked gift collections for every occasion and personality",
+    "ctaTitle": "Ready to Start Gifting?",
+    "ctaSubtitle": "Join thousands of users who make every gift special",
+    "privacy": "Privacy",
+    "terms": "Terms",
+    "contact": "Contact",
+    "rights": "All rights reserved."
   }
 }

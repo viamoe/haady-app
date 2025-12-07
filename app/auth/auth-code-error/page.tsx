@@ -54,7 +54,7 @@ export default function AuthCodeError() {
 
             {/* Try Again Button */}
             <Button
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/login')}
               className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl"
             >
               {t('auth.tryAgainButton') || 'Try Again'}

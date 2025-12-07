@@ -399,7 +399,7 @@ export default function PhoneAuth() {
                     setOtp(['', '', '', '', '', ''])
                     setErrors({})
                   } else {
-                    router.push('/')
+                    router.push('/login')
                   }
                 }}
                 className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-50 transition-colors cursor-pointer"

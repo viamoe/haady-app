@@ -48,13 +48,13 @@ export default function ClaimUsername() {
         
         if (authError) {
           console.error('Auth error:', authError)
-          router.push('/')
+          router.push('/login')
           return
         }
         
         if (!user) {
           // Not logged in, redirect to login
-          router.push('/')
+          router.push('/login')
           return
         }
       
@@ -127,7 +127,7 @@ export default function ClaimUsername() {
       } catch (error: any) {
         console.error('Error checking auth:', error)
         if (error?.message?.includes('session') || error?.message?.includes('JWT') || error?.message?.includes('Auth session missing')) {
-          router.push('/')
+          router.push('/login')
           return
         }
         setIsCheckingAuth(false)

@@ -11,9 +11,11 @@ const intlMiddleware = createMiddleware({
 });
 
 export function proxy(request: NextRequest) {
-  // For root route, bypass next-intl middleware to avoid any interference
+  const pathname = request.nextUrl.pathname
+  
+  // For root route and login, bypass next-intl middleware to avoid any interference
   // Locale is handled via cookies in the layout
-  if (request.nextUrl.pathname === '/') {
+  if (pathname === '/' || pathname === '/login') {
     return NextResponse.next();
   }
   
