@@ -4,7 +4,9 @@ import { locales, defaultLocale } from './i18n/request';
 export default createMiddleware({
   locales,
   defaultLocale,
-  localePrefix: 'never' // Don't prefix URLs with locale
+  localePrefix: 'never', // Don't prefix URLs with locale
+  // Always use default locale, don't redirect
+  localeDetection: false
 });
 
 export const config = {
