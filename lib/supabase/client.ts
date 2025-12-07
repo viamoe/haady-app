@@ -10,4 +10,5 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// createBrowserClient automatically handles cookies in the browser
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);

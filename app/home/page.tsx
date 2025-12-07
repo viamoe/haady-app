@@ -59,14 +59,24 @@ export default function Home() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        router.push('/')
-        return
-      }
-      
-      // Check if user is an admin first - admins skip onboarding
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError) {
+          console.error('Auth error:', authError)
+          // If session is missing, redirect to login
+          if (authError.message?.includes('session') || authError.message?.includes('JWT')) {
+            router.push('/')
+            return
+          }
+        }
+        
+        if (!user) {
+          router.push('/')
+          return
+        }
+        
+        // Check if user is an admin first - admins skip onboarding
       // Check both admin_users table and if user exists in auth but not in public.users
       const { data: adminData } = await supabase
         .from('admin_users')
@@ -138,7 +148,13 @@ export default function Home() {
         if (isAdmin) {
           // Admin users might not have a profile in public.users, that's okay
           // Create a minimal profile from auth user data
-          const { data: { user: authUser } } = await supabase.auth.getUser()
+          const { data: { user: authUser }, error: getUserError } = await supabase.auth.getUser()
+          
+          if (getUserError || !authUser) {
+            console.error('Error getting auth user:', getUserError)
+            router.push('/')
+            return
+          }
           setProfile({
             id: authUser?.id || '',
             full_name: authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || 'Admin User',
@@ -224,10 +240,20 @@ export default function Home() {
 
       setIsLoading(false)
       setIsCheckingAuth(false)
+      } catch (error: any) {
+        console.error('Error checking auth:', error)
+        // If it's a session error, redirect to login
+        if (error?.message?.includes('session') || error?.message?.includes('JWT') || error?.message?.includes('Auth session missing')) {
+          router.push('/')
+          return
+        }
+        setIsCheckingAuth(false)
+        setIsLoading(false)
+      }
     }
-    
+
     checkAuth()
-  }, [router, t])
+  }, [router])
 
   const handleSignOut = async () => {
     try {
