@@ -88,7 +88,7 @@ export async function GET(request: Request) {
       .single()
     
     if (adminData) {
-      return NextResponse.redirect(`${origin}/app/home`)
+      return NextResponse.redirect(`${origin}/home`)
     }
 
     // Get fresh user data for onboarding check
@@ -124,9 +124,9 @@ export async function GET(request: Request) {
     const nextStep = getNextOnboardingStep(userDataWithFlags || {})
     
     // Redirect to the correct onboarding step
-    return NextResponse.redirect(`${origin}/app${nextStep}`)
+    return NextResponse.redirect(`${origin}${nextStep}`)
   }
 
   // Return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/app/auth/auth-code-error`)
+  return NextResponse.redirect(`${origin}/auth/auth-code-error`)
 }
