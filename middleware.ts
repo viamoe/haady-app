@@ -3,10 +3,30 @@ import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(req: NextRequest) {
-  const isAuthPage = req.nextUrl.pathname.startsWith('/auth');
-  const isAuthCallback = req.nextUrl.pathname.startsWith('/auth/callback');
-  const isDashboard = req.nextUrl.pathname.startsWith('/dashboard');
-  const isLockPage = req.nextUrl.pathname.startsWith('/lock');
+  const pathname = req.nextUrl.pathname;
+  const searchParams = req.nextUrl.searchParams;
+  const code = searchParams.get('code');
+  
+  // Handle OAuth code at root path - redirect to appropriate callback
+  // This catches cases where Supabase redirects to haady.app/?code=... 
+  // instead of the intended subdomain callback
+  if (pathname === '/' && code) {
+    // Check if there's a state parameter that indicates the origin app
+    // For now, we'll redirect to /auth/callback which handles the OAuth flow
+    const callbackUrl = new URL('/auth/callback', req.url);
+    callbackUrl.searchParams.set('code', code);
+    
+    // Copy over any other OAuth-related params
+    const state = searchParams.get('state');
+    if (state) callbackUrl.searchParams.set('state', state);
+    
+    return NextResponse.redirect(callbackUrl);
+  }
+  
+  const isAuthPage = pathname.startsWith('/auth');
+  const isAuthCallback = pathname.startsWith('/auth/callback');
+  const isDashboard = pathname.startsWith('/dashboard');
+  const isLockPage = pathname.startsWith('/lock');
 
   // Allow auth callback to pass through without checking session
   if (isAuthCallback) {
@@ -47,5 +67,6 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/lock/:path*']
+  matcher: ['/', '/dashboard/:path*', '/lock/:path*']
 };
+
