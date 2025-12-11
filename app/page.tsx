@@ -1,17 +1,79 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale } from '@/i18n/context'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { ArrowRight, Gift, Heart, Sparkles, Users, Zap } from 'lucide-react'
 import Link from 'next/link'
+import { useEffect, Suspense } from 'react'
 
 const HAADY_LOGO_URL = 'https://rovphhvuuxwbhgnsifto.supabase.co/storage/v1/object/public/assets/haady-icon.svg'
 
-export default function LandingPage() {
+// Component to handle OAuth redirects
+function OAuthRedirectHandler() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const code = searchParams?.get('code')
+    if (code) {
+      // Check for OAuth origin cookie to determine if this is a merchant OAuth
+      const cookies = document.cookie.split(';')
+      let oauthOriginCookie: string | null = null
+      
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=')
+        if (name === 'haady_oauth_origin') {
+          oauthOriginCookie = decodeURIComponent(value)
+          break
+        }
+      }
+      
+      // If we have an OAuth code and cookie indicates merchant, redirect to callback
+      if (oauthOriginCookie) {
+        try {
+          const oauthData = JSON.parse(oauthOriginCookie)
+          if (oauthData.app_type === 'merchant') {
+            // Redirect to business app callback with the code
+            const callbackUrl = new URL('https://business.haady.app/auth/callback')
+            callbackUrl.searchParams.set('code', code)
+            callbackUrl.searchParams.set('app_type', 'merchant')
+            if (oauthData.preferred_country) {
+              callbackUrl.searchParams.set('preferred_country', oauthData.preferred_country)
+            }
+            if (oauthData.preferred_language) {
+              callbackUrl.searchParams.set('preferred_language', oauthData.preferred_language)
+            }
+            console.log('🔵 Redirecting merchant OAuth from root page to business.haady.app:', callbackUrl.toString())
+            window.location.href = callbackUrl.toString()
+            return
+          }
+        } catch (e) {
+          console.error('Failed to parse OAuth origin cookie:', e)
+        }
+      }
+      
+      // For regular haady.app OAuth, redirect to /auth/callback
+      const callbackUrl = new URL('/auth/callback', window.location.origin)
+      callbackUrl.searchParams.set('code', code)
+      // Preserve any other query params
+      searchParams?.forEach((value, key) => {
+        if (key !== 'code') {
+          callbackUrl.searchParams.set(key, value)
+        }
+      })
+      console.log('🔵 Redirecting OAuth from root page to /auth/callback:', callbackUrl.toString())
+      router.replace(callbackUrl.pathname + callbackUrl.search)
+    }
+  }, [searchParams, router])
+
+  return null
+}
+
+function LandingPageContent() {
   const t = useTranslations()
   const { isRTL, locale } = useLocale()
   const router = useRouter()
@@ -21,7 +83,9 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <>
+      <OAuthRedirectHandler />
+      <div className="min-h-screen relative overflow-hidden">
       {/* Gradient Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-amber-100 via-orange-200 via-50% to-orange-400" />
       <div className="absolute inset-0 bg-gradient-to-tr from-rose-200/40 via-transparent to-purple-200/30" />
@@ -266,5 +330,14 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
+    </>
+  )
+}
+
+export default function LandingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <LandingPageContent />
+    </Suspense>
   )
 }

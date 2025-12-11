@@ -10,17 +10,50 @@ export async function GET(request: Request) {
   const type = searchParams.get('type')
   const appType = searchParams.get('app_type')
   
-  // If this OAuth was meant for the business app, redirect there with the code
-  // This handles cases where Supabase falls back to the Site URL (haady.app)
-  if (code && appType === 'merchant') {
-    const businessCallbackUrl = new URL('https://business.haady.app/login/callback')
+  const cookieStore = await cookies()
+  
+  // Check for OAuth origin cookie set by business.haady.app
+  // This is the most reliable way to detect if OAuth started from the business app
+  const oauthOriginCookie = cookieStore.get('haady_oauth_origin')
+  let oauthOriginData: { app_type?: string; preferred_country?: string; preferred_language?: string } | null = null
+  
+  if (oauthOriginCookie) {
+    try {
+      oauthOriginData = JSON.parse(decodeURIComponent(oauthOriginCookie.value))
+      console.log('Found OAuth origin cookie:', oauthOriginData)
+    } catch (e) {
+      console.error('Failed to parse OAuth origin cookie:', e)
+    }
+  }
+  
+  // Redirect to business app if:
+  // 1. OAuth origin cookie indicates merchant app
+  // 2. OR app_type query param is 'merchant'
+  const isMerchantOAuth = oauthOriginData?.app_type === 'merchant' || appType === 'merchant'
+  
+  if (code && isMerchantOAuth) {
+    const businessCallbackUrl = new URL('https://business.haady.app/auth/callback')
     businessCallbackUrl.searchParams.set('code', code)
     businessCallbackUrl.searchParams.set('app_type', 'merchant')
+    
+    // Get preferences from cookie or query params
+    const preferredCountry = oauthOriginData?.preferred_country || searchParams.get('preferred_country')
+    const preferredLanguage = oauthOriginData?.preferred_language || searchParams.get('preferred_language')
+    if (preferredCountry) businessCallbackUrl.searchParams.set('preferred_country', preferredCountry)
+    if (preferredLanguage) businessCallbackUrl.searchParams.set('preferred_language', preferredLanguage)
     businessCallbackUrl.searchParams.set('next', '/dashboard')
-    return NextResponse.redirect(businessCallbackUrl)
+    
+    // Create response with redirect and clear the OAuth origin cookie
+    const response = NextResponse.redirect(businessCallbackUrl)
+    response.cookies.set('haady_oauth_origin', '', {
+      path: '/',
+      domain: '.haady.app',
+      maxAge: 0, // Delete the cookie
+    })
+    
+    console.log('Redirecting merchant OAuth to business.haady.app:', businessCallbackUrl.toString())
+    return response
   }
-
-  const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -50,6 +83,16 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error && data.user) {
       user = data.user
+      
+      // Check user metadata for app_type BEFORE processing as regular user
+      // This handles cases where Supabase redirects to haady.app instead of business.haady.app
+      const userAppType = data.user.user_metadata?.app_type || data.user.app_metadata?.app_type;
+      
+      if (userAppType === 'merchant') {
+        // Code already exchanged, redirect to business app dashboard (not callback)
+        // since the session is already set on this domain
+        return NextResponse.redirect('https://business.haady.app/dashboard')
+      }
     }
   }
   
@@ -71,7 +114,7 @@ export async function GET(request: Request) {
       .from('merchant_users')
       .select('merchant_id')
       .eq('auth_user_id', user.id)
-      .single()
+      .maybeSingle()
     
     if (merchantUser) {
       // User is a merchant, redirect to business app
