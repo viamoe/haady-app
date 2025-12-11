@@ -37,8 +37,9 @@ function OAuthRedirectHandler() {
         try {
           const oauthData = JSON.parse(oauthOriginCookie)
           if (oauthData.app_type === 'merchant') {
-            // Redirect to business app callback with the code
-            const callbackUrl = new URL('https://business.haady.app/auth/callback')
+            // Use the origin from the cookie if available, otherwise fallback to production URL
+            const businessOrigin = oauthData.origin || 'https://business.haady.app'
+            const callbackUrl = new URL(`${businessOrigin}/auth/callback`)
             callbackUrl.searchParams.set('code', code)
             callbackUrl.searchParams.set('app_type', 'merchant')
             if (oauthData.preferred_country) {
@@ -47,7 +48,7 @@ function OAuthRedirectHandler() {
             if (oauthData.preferred_language) {
               callbackUrl.searchParams.set('preferred_language', oauthData.preferred_language)
             }
-            console.log('🔵 Redirecting merchant OAuth from root page to business.haady.app:', callbackUrl.toString())
+            console.log('🔵 Redirecting merchant OAuth from root page to:', callbackUrl.toString())
             window.location.href = callbackUrl.toString()
             return
           }

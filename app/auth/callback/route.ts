@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   // Check for OAuth origin cookie set by business.haady.app
   // This is the most reliable way to detect if OAuth started from the business app
   const oauthOriginCookie = cookieStore.get('haady_oauth_origin')
-  let oauthOriginData: { app_type?: string; preferred_country?: string; preferred_language?: string } | null = null
+  let oauthOriginData: { app_type?: string; preferred_country?: string; preferred_language?: string; origin?: string } | null = null
   
   if (oauthOriginCookie) {
     try {
@@ -32,7 +32,9 @@ export async function GET(request: Request) {
   const isMerchantOAuth = oauthOriginData?.app_type === 'merchant' || appType === 'merchant'
   
   if (code && isMerchantOAuth) {
-    const businessCallbackUrl = new URL('https://business.haady.app/auth/callback')
+    // Use the origin from the cookie if available, otherwise fallback to production URL
+    const businessOrigin = oauthOriginData?.origin || 'https://business.haady.app'
+    const businessCallbackUrl = new URL(`${businessOrigin}/auth/callback`)
     businessCallbackUrl.searchParams.set('code', code)
     businessCallbackUrl.searchParams.set('app_type', 'merchant')
     
@@ -51,7 +53,7 @@ export async function GET(request: Request) {
       maxAge: 0, // Delete the cookie
     })
     
-    console.log('Redirecting merchant OAuth to business.haady.app:', businessCallbackUrl.toString())
+    console.log('Redirecting merchant OAuth to:', businessCallbackUrl.toString())
     return response
   }
   const supabase = createServerClient(
