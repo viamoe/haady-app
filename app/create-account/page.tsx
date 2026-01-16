@@ -7,10 +7,9 @@ import { supabase } from '@/lib/supabase/client'
 import { getCurrentUser } from '@/lib/supabase/auth-helpers'
 import { Button, EmailInput } from '@haady/ui'
 import { isAdminUser, getUserWithPreferences } from '@/lib/db/client-repos'
-import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
-import { getNextOnboardingStep, ONBOARDING_PATHS } from '@/lib/onboarding'
-import { ArrowLeft, ArrowRight, Mail, Phone, Globe } from 'lucide-react'
+import { getNextOnboardingStep } from '@/lib/onboarding'
+import { ArrowLeft, ArrowRight, Mail, Phone, Check, Globe } from 'lucide-react'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { useLocale } from '@/i18n/context'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -20,7 +19,7 @@ const HAADY_LOGO_URL = 'https://rovphhvuuxwbhgnsifto.supabase.co/storage/v1/obje
 
 type AuthStep = 'email' | 'verify-email'
 
-export default function JoinHaady() {
+export default function CreateAccount() {
   const t = useTranslations()
   const { isRTL, locale, setLocale } = useLocale()
   const router = useRouter()
@@ -42,7 +41,6 @@ export default function JoinHaady() {
   // Form states
   const [email, setEmail] = useState('')
   
-
   // Form validation - check if email is valid using EmailInput validation
   const validateForm = (): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -61,7 +59,9 @@ export default function JoinHaady() {
         const { user, error: authError } = await getCurrentUser()
         
         if (authError) {
-          console.error('Auth check error:', authError)
+          const errorMessage = authError?.message || 'Unknown auth error'
+          const errorCode = authError?.code || 'UNKNOWN'
+          console.error('Auth check error:', JSON.stringify({ code: errorCode, message: errorMessage }))
           setIsCheckingAuth(false)
           return
         }
@@ -71,7 +71,9 @@ export default function JoinHaady() {
           const { isAdmin, error: adminError } = await isAdminUser(user.id)
           
           if (adminError) {
-            console.error('Error checking admin status:', adminError)
+            const errorMessage = adminError?.message || 'Unknown admin check error'
+            const errorCode = adminError?.code || 'UNKNOWN'
+            console.error('Error checking admin status:', JSON.stringify({ code: errorCode, message: errorMessage }))
           }
           
           if (isAdmin) {
@@ -83,19 +85,19 @@ export default function JoinHaady() {
           const { data: userDataWithFlags, error: userError } = await getUserWithPreferences(user.id)
           
           if (userError) {
-            // On login page, if user doesn't have a profile yet, that's expected
-            // Allow them to continue with login instead of blocking
+            // On create-account page, if user doesn't have a profile yet, that's expected
+            // Allow them to continue with account creation instead of blocking
             // Only log as warning since this is a normal flow for new users
             const errorCode = userError?.code || 'UNKNOWN'
             const errorMessage = userError?.message || 'Unknown user loading error'
             
-            // Log as warning (not error) since user can still login
+            // Log as warning (not error) since user can still create account
             console.warn('User profile not found (expected for new users):', JSON.stringify({ 
               code: errorCode, 
               message: errorMessage 
             }))
             
-            // Don't block - allow user to continue with login
+            // Don't block - allow user to continue with account creation
             setIsCheckingAuth(false)
             return
           }
@@ -107,12 +109,14 @@ export default function JoinHaady() {
             return
           }
           
-          // No user data but no error - allow login
+          // No user data but no error - allow account creation
           setIsCheckingAuth(false)
           return
         }
       } catch (error) {
-        console.error('Error checking auth:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        const errorDetails = error instanceof Error ? { name: error.name, stack: error.stack } : {}
+        console.error('Error checking auth:', JSON.stringify({ message: errorMessage, ...errorDetails }))
       } finally {
         setIsCheckingAuth(false)
       }
@@ -121,7 +125,7 @@ export default function JoinHaady() {
     checkAuth()
   }, [router])
 
-  // Handle email magic link submission
+  // Handle email magic link submission (signup)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -138,11 +142,13 @@ export default function JoinHaady() {
         callbackUrl.searchParams.set('username', usernameFromQuery)
       }
       
-      // Send magic link via email OTP
+      // Send magic link via email OTP (signup)
+      // Supabase will create a new user if they don't exist
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim().toLowerCase(),
         options: {
           emailRedirectTo: callbackUrl.toString(),
+          shouldCreateUser: true, // Explicitly create user if doesn't exist
         },
       })
 
@@ -167,10 +173,16 @@ export default function JoinHaady() {
   const handleResendEmail = async () => {
     setIsResending(true)
     try {
+      const callbackUrl = new URL(`${window.location.origin}/auth/callback`)
+      if (usernameFromQuery) {
+        callbackUrl.searchParams.set('username', usernameFromQuery)
+      }
+      
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim().toLowerCase(),
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: callbackUrl.toString(),
+          shouldCreateUser: true,
         },
       })
       
@@ -187,8 +199,8 @@ export default function JoinHaady() {
     }
   }
 
-  // Handle Google sign in
-  const handleGoogleSignIn = async () => {
+  // Handle Google sign up
+  const handleGoogleSignUp = async () => {
     setIsLoading(true)
     try {
       // Build redirect URL with username if present
@@ -205,17 +217,21 @@ export default function JoinHaady() {
       })
       if (error) throw error
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Google sign in failed'
-      toast.error(t('toast.googleSignInFailed'), {
+      const errorMessage = error instanceof Error ? error.message : 'Google sign up failed'
+      toast.error(t('toast.googleSignInFailed') || 'Google sign up failed', {
         description: errorMessage,
       })
       setIsLoading(false)
     }
   }
 
-  // Handle phone sign in navigation
-  const handlePhoneSignIn = () => {
-    router.push('/phone')
+  // Handle phone sign up navigation
+  const handlePhoneSignUp = () => {
+    const phoneUrl = new URL('/phone', window.location.origin)
+    if (usernameFromQuery) {
+      phoneUrl.searchParams.set('username', usernameFromQuery)
+    }
+    router.push(phoneUrl.toString())
   }
 
 
@@ -324,7 +340,7 @@ export default function JoinHaady() {
               </h1>
               
               <p className="text-gray-500 mb-2 text-center">
-                {t('auth.magicLinkSentTo') || "We've sent a magic link to"}
+                {t('auth.verificationSent') || "We've sent a verification link to"}
               </p>
               
               <p className="text-gray-900 font-semibold mb-6 text-center">
@@ -332,7 +348,7 @@ export default function JoinHaady() {
               </p>
 
               <p className="text-gray-400 text-sm mb-8 text-center">
-                {t('auth.clickLinkToSignIn') || 'Click the link in your email to sign in. The link will expire in 1 hour.'}
+                {t('auth.clickLink') || 'Click the link in your email to verify your account and complete your profile.'}
               </p>
 
               {/* Resend button */}
@@ -397,6 +413,39 @@ export default function JoinHaady() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           >
+            {/* Back Button */}
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={() => router.push('/')}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                {isRTL ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
+                <span>{t('auth.back') || 'Back'}</span>
+              </button>
+            </div>
+
+            {/* Username Display */}
+            {usernameFromQuery && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+                className="mb-6 p-4 bg-green-50 rounded-xl border border-green-200 flex items-center gap-3"
+              >
+                <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                  <Check className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-green-700 font-medium mb-1">
+                    {t('auth.usernameSelected') || 'Username selected'}
+                  </p>
+                  <p className="text-lg font-bold text-green-900 truncate" dir="ltr">
+                    haady.app/@{usernameFromQuery}
+                  </p>
+                </div>
+              </motion.div>
+            )}
 
             {/* Header */}
             <motion.h1
@@ -436,7 +485,7 @@ export default function JoinHaady() {
                   isRTL={isRTL}
                   enableValidation={true}
                   t={t}
-                  successMessage={t('validation.emailValid')}
+                  successMessage={t('validation.emailValid') || 'Email is valid'}
                 />
               </motion.div>
 
@@ -455,7 +504,7 @@ export default function JoinHaady() {
                   {isLoading ? (
                     <span className="flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>{t('auth.sendingLink') || 'Sending link...'}</span>
+                      <span>{t('auth.creatingAccount') || 'Creating account...'}</span>
                     </span>
                   ) : (
                     <span>{t('auth.continueWithEmail') || 'Continue with Email'}</span>
@@ -479,7 +528,7 @@ export default function JoinHaady() {
               {/* Continue with Phone */}
               <button
                 type="button"
-                onClick={handlePhoneSignIn}
+                onClick={handlePhoneSignUp}
                 disabled={isLoading}
                 className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
@@ -490,7 +539,7 @@ export default function JoinHaady() {
               {/* Continue with Google */}
               <button
                 type="button"
-                onClick={handleGoogleSignIn}
+                onClick={handleGoogleSignUp}
                 disabled={isLoading}
                 className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
@@ -506,7 +555,7 @@ export default function JoinHaady() {
 
             {/* Terms */}
             <p className="mt-6 text-center text-xs text-gray-500 leading-relaxed">
-              {t('auth.termsContinuing') || 'By continuing you are agreeing to the Haady'}{' '}
+              {t('auth.termsJoining') || 'By joining you are agreeing to the Haady'}{' '}
               <a href="#" className="text-gray-700 underline hover:text-gray-900 cursor-pointer">{t('auth.termsAndConditions')}</a>
               {' '}{t('auth.and')}{' '}
               <a href="#" className="text-gray-700 underline hover:text-gray-900 cursor-pointer">{t('auth.privacyPolicy')}</a>.
@@ -517,4 +566,3 @@ export default function JoinHaady() {
     </div>
   )
 }
-
