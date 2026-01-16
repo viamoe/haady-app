@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
@@ -20,7 +20,7 @@ const HAADY_LOGO_URL = 'https://rovphhvuuxwbhgnsifto.supabase.co/storage/v1/obje
 
 type AuthStep = 'email' | 'verify-email'
 
-export default function JoinHaady() {
+function JoinHaadyContent() {
   const t = useTranslations()
   const { isRTL, locale, setLocale } = useLocale()
   const router = useRouter()
@@ -515,6 +515,21 @@ export default function JoinHaady() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function JoinHaady() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </div>
+    }>
+      <JoinHaadyContent />
+    </Suspense>
   )
 }
 
