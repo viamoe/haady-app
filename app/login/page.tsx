@@ -86,8 +86,8 @@ export default function JoinHaady() {
             // On login page, if user doesn't have a profile yet, that's expected
             // Allow them to continue with login instead of blocking
             // Only log as warning since this is a normal flow for new users
-            const errorCode = userError?.code || 'UNKNOWN'
-            const errorMessage = userError?.message || 'Unknown user loading error'
+            const errorCode = (userError as any)?.code || 'UNKNOWN'
+            const errorMessage = userError instanceof Error ? userError.message : String(userError) || 'Unknown user loading error'
             
             // Log as warning (not error) since user can still login
             console.warn('User profile not found (expected for new users):', JSON.stringify({ 

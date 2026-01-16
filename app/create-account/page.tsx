@@ -59,8 +59,8 @@ export default function CreateAccount() {
         const { user, error: authError } = await getCurrentUser()
         
         if (authError) {
-          const errorMessage = authError?.message || 'Unknown auth error'
-          const errorCode = authError?.code || 'UNKNOWN'
+          const errorMessage = authError instanceof Error ? authError.message : String(authError)
+          const errorCode = (authError as any)?.code || 'UNKNOWN'
           console.error('Auth check error:', JSON.stringify({ code: errorCode, message: errorMessage }))
           setIsCheckingAuth(false)
           return
@@ -88,8 +88,8 @@ export default function CreateAccount() {
             // On create-account page, if user doesn't have a profile yet, that's expected
             // Allow them to continue with account creation instead of blocking
             // Only log as warning since this is a normal flow for new users
-            const errorCode = userError?.code || 'UNKNOWN'
-            const errorMessage = userError?.message || 'Unknown user loading error'
+            const errorCode = (userError as any)?.code || 'UNKNOWN'
+            const errorMessage = userError instanceof Error ? userError.message : String(userError) || 'Unknown user loading error'
             
             // Log as warning (not error) since user can still create account
             console.warn('User profile not found (expected for new users):', JSON.stringify({ 
