@@ -3,8 +3,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { getNextOnboardingStep, PROFILE_REDIRECT } from '@/lib/onboarding'
 import { createServerSupabase } from '@/lib/supabase/server'
-import { isAdminUser, getUserWithPreferences, upsertUser, updateUser, getUserById } from '@/server/db'
-import { checkUsernameAvailability, updateUser as updateUserRepo } from '@/server/db/users.repo'
+import { isAdminUser, getUserWithPreferences, upsertUser, updateUser, getUserById, checkUsernameAvailability } from '@/server/db'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -183,7 +182,7 @@ export async function GET(request: Request) {
         const availabilityResult = await checkUsernameAvailability(normalizedUsername)
         
         if (availabilityResult.available && !availabilityResult.error) {
-          const updateResult = await updateUserRepo(user.id, {
+          const updateResult = await updateUser(user.id, {
             username: normalizedUsername,
           })
           
