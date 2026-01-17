@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { getCurrentUser } from '@/lib/supabase/auth-helpers'
 import { Button, Input } from '@haady/ui'
-import { isAdminUser, getUserWithPreferences, getUserById, updateUser, upsertUser } from '@/lib/db/client-repos'
+import { isAdminUser, getUserWithPreferences, getUserById } from '@/lib/db/client-repos'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
 import { CheckCircle2, Globe } from 'lucide-react'
@@ -495,18 +495,25 @@ function CompleteProfileContent() {
         }
       }
 
-      // Upsert user profile in database (create if doesn't exist, update if exists)
-      const { error: upsertError } = await upsertUser(userId, {
-        full_name: profile.fullName,
-        username: finalUsername,
-        phone: profile.phone ? `${profile.phoneCountryCode}${profile.phone}` : null,
-        country: profile.country || null,
-        city: profile.city || null,
-        birthdate: birthdateToSave,
-        onboarding_step: ONBOARDING_STEPS.PERSONALITY_TRAITS, // Always go to personality-traits (skip claim-username)
+      // Upsert user profile via API (handles server-side auth properly)
+      const profileResponse = await fetch('/api/users/profile/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: profile.fullName,
+          username: finalUsername,
+          phone: profile.phone ? `${profile.phoneCountryCode}${profile.phone}` : null,
+          country: profile.country || null,
+          city: profile.city || null,
+          birthdate: birthdateToSave,
+          onboarding_step: ONBOARDING_STEPS.PERSONALITY_TRAITS, // Always go to personality-traits (skip claim-username)
+        }),
       })
 
-      if (upsertError) throw new Error(upsertError.message)
+      const profileResult = await profileResponse.json()
+      if (!profileResponse.ok || !profileResult.ok) {
+        throw new Error(profileResult.error?.message || 'Failed to update profile')
+      }
 
       toast.success(t('toast.profileUpdated'))
       
@@ -556,14 +563,19 @@ function CompleteProfileContent() {
         finalUsername = currentUserData.username as string
       }
 
-      // Upsert user profile with minimal data when skipping
-      const { error: upsertError } = await upsertUser(userId, {
-        username: finalUsername,
-        onboarding_step: ONBOARDING_STEPS.PERSONALITY_TRAITS, // Always go to personality-traits (skip claim-username)
+      // Upsert user profile via API with minimal data when skipping
+      const profileResponse = await fetch('/api/users/profile/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: finalUsername,
+          onboarding_step: ONBOARDING_STEPS.PERSONALITY_TRAITS, // Always go to personality-traits (skip claim-username)
+        }),
       })
 
-      if (upsertError) {
-        console.error('Error updating user:', upsertError)
+      const profileResult = await profileResponse.json()
+      if (!profileResponse.ok || !profileResult.ok) {
+        console.error('Error updating user:', profileResult.error)
       }
       
       // Redirect to personality-traits (skip claim-username step)
