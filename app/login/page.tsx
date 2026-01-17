@@ -101,7 +101,7 @@ function JoinHaadyContent() {
           
           // User exists and has profile - redirect to appropriate onboarding step
           if (userDataWithFlags) {
-            const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+            const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
             router.push(nextStep)
             return
           }

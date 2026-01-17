@@ -79,12 +79,12 @@ export default function PersonalityTraits() {
         return
       }
       
-      const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+      const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
       
       // If user should be on a different step, redirect them
       if (nextStep !== '/personality-traits') {
         if (nextStep === PROFILE_REDIRECT) {
-          const username = (userDataWithFlags as Record<string, unknown>)?.username as string | null
+          const username = (userDataWithFlags as unknown as Record<string, unknown>)?.username as string | null
           router.push(username ? `/@${username}` : '/')
         } else {
           router.push(nextStep)
@@ -93,7 +93,7 @@ export default function PersonalityTraits() {
       }
 
       // Load existing traits if any
-      const userData = userDataWithFlags as { has_personality_traits?: boolean } & Record<string, unknown>
+      const userData = userDataWithFlags as unknown as { has_personality_traits?: boolean } & Record<string, unknown>
       if (userData.has_personality_traits) {
         const { data: userTraitsData } = await getUserTraits(user.id)
         if (userTraitsData && userTraitsData.length > 0) {

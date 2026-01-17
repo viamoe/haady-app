@@ -79,12 +79,12 @@ export default function FavoriteColors() {
         return
       }
       
-      const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+      const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
       
       // If user should be on a different step, redirect them
       if (nextStep !== '/favorite-colors') {
         if (nextStep === PROFILE_REDIRECT) {
-          const username = (userDataWithFlags as Record<string, unknown>)?.username as string | null
+          const username = (userDataWithFlags as unknown as Record<string, unknown>)?.username as string | null
           router.push(username ? `/@${username}` : '/')
         } else {
           router.push(nextStep)
@@ -93,7 +93,7 @@ export default function FavoriteColors() {
       }
 
       // Load existing colors if any
-      const userData = userDataWithFlags as { has_favorite_colors?: boolean } & Record<string, unknown>
+      const userData = userDataWithFlags as unknown as { has_favorite_colors?: boolean } & Record<string, unknown>
       if (userData.has_favorite_colors) {
         // Get user colors IDs
         const { data: userColorsData } = await getUserColors(user.id)
@@ -172,8 +172,8 @@ export default function FavoriteColors() {
       // Ensure we have all required fields for calculateProfileCompletion
       const userData = userResult.data || {}
       const completionData = {
-        full_name: userData.full_name || null,
-        username: userData.username || null,
+        full_name: (userData.full_name as string | null) || null,
+        username: (userData.username as string | null) || null,
         has_personality_traits: (traitsResult.data?.length || 0) > 0,
         has_favorite_brands: (brandsResult.data?.length || 0) > 0,
         has_favorite_colors: selectedColors.length > 0,
@@ -230,8 +230,8 @@ export default function FavoriteColors() {
       // Ensure we have all required fields for calculateProfileCompletion
       const userData = userResult.data || {}
       const completionData = {
-        full_name: userData.full_name || null,
-        username: userData.username || null,
+        full_name: (userData.full_name as string | null) || null,
+        username: (userData.username as string | null) || null,
         has_personality_traits: (traitsResult.data?.length || 0) > 0,
         has_favorite_brands: (brandsResult.data?.length || 0) > 0,
         has_favorite_colors: false, // Skipped

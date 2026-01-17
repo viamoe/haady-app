@@ -22,7 +22,7 @@ export function LocaleProvider({
   // Only use initialLocale for the initial state - don't sync it later to avoid re-render loops
   const [locale, setLocaleState] = useState<Locale>(() => initialLocale)
 
-  const dir = useMemo(() => locale === 'ar' ? 'rtl' : 'ltr', [locale])
+  const dir = useMemo((): 'rtl' | 'ltr' => locale === 'ar' ? 'rtl' : 'ltr', [locale])
   const isRTL = useMemo(() => locale === 'ar', [locale])
 
   // Track if we've already set the document attributes to prevent unnecessary updates

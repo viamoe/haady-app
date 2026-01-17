@@ -13,7 +13,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { useLocale } from '@/i18n/context'
-import { useNavigation, type CaptionProps } from 'react-day-picker'
+import { useNavigation, type MonthCaptionProps } from 'react-day-picker'
 
 interface DatePickerProps {
   date?: Date
@@ -24,10 +24,10 @@ interface DatePickerProps {
 }
 
 // Custom caption component that only shows month (no year)
-function MonthOnlyCaption(props: CaptionProps) {
+function MonthOnlyCaption(props: MonthCaptionProps) {
   const { goToMonth, nextMonth, previousMonth } = useNavigation()
   const { locale } = useLocale()
-  const monthLabel = props.displayMonth.toLocaleString(locale === 'ar' ? 'ar' : 'en', { month: 'long' })
+  const monthLabel = props.calendarMonth.date.toLocaleString(locale === 'ar' ? 'ar' : 'en', { month: 'long' })
   
   return (
     <div className="flex items-center justify-between px-1 py-2">
@@ -95,7 +95,7 @@ export function DatePicker({
           locale={dateLocale}
           dir={isRTL ? 'rtl' : 'ltr'}
           components={{
-            Caption: MonthOnlyCaption,
+            MonthCaption: MonthOnlyCaption,
           }}
           initialFocus
         />

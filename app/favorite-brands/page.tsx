@@ -79,12 +79,12 @@ export default function FavoriteBrands() {
         return
       }
       
-      const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+      const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
       
       // If user should be on a different step, redirect them
       if (nextStep !== '/favorite-brands') {
         if (nextStep === PROFILE_REDIRECT) {
-          const username = (userDataWithFlags as Record<string, unknown>)?.username as string | null
+          const username = (userDataWithFlags as unknown as Record<string, unknown>)?.username as string | null
           router.push(username ? `/@${username}` : '/')
         } else {
           router.push(nextStep)
@@ -93,7 +93,7 @@ export default function FavoriteBrands() {
       }
 
       // Load existing brands if any
-      const userData = userDataWithFlags as { has_favorite_brands?: boolean } & Record<string, unknown>
+      const userData = userDataWithFlags as unknown as { has_favorite_brands?: boolean } & Record<string, unknown>
       if (userData.has_favorite_brands) {
         const { data: userBrandsData } = await getUserBrands(user.id)
         if (userBrandsData && userBrandsData.length > 0) {

@@ -125,7 +125,7 @@ export default function ProfilePage() {
           if (currentUserData) {
             setCurrentUserProfile(currentUserData as unknown as UserProfile)
             // Calculate next step for navigation
-            const step = getNextOnboardingStep(currentUserData as Record<string, unknown>)
+            const step = getNextOnboardingStep(currentUserData as unknown as Record<string, unknown>)
             setNextStep(step)
           }
           
@@ -255,7 +255,7 @@ export default function ProfilePage() {
     return (
       <div className="min-h-screen bg-white">
         <Header
-          user={currentUser}
+          user={currentUser ? { id: currentUser.id, email: currentUser.email ?? undefined } : null}
           userProfile={currentUserProfile}
           locale={locale}
           isRTL={isRTL}
@@ -294,7 +294,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-white">
       <Header
-        user={currentUser}
+        user={currentUser ? { id: currentUser.id, email: currentUser.email ?? undefined } : null}
         userProfile={currentUserProfile}
         locale={locale}
         isRTL={isRTL}

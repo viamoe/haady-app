@@ -70,7 +70,7 @@ export default function SettingsPage() {
         const { data: profileData } = await getUserById(user.id)
         if (profileData) {
           setCurrentUserProfile(profileData as unknown as UserProfile)
-          const step = getNextOnboardingStep(profileData as Record<string, unknown>)
+          const step = getNextOnboardingStep(profileData as unknown as Record<string, unknown>)
           setNextStep(step)
         }
         
@@ -112,7 +112,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-white">
       <Header
-        user={currentUser}
+        user={currentUser ? { id: currentUser.id, email: currentUser.email ?? undefined } : null}
         userProfile={currentUserProfile}
         locale={locale}
         isRTL={isRTL}

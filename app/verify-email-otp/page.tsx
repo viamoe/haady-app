@@ -81,30 +81,9 @@ function VerifyEmailOtpContent() {
           const { data: userDataWithFlags, error: userError } = await getUserWithPreferences(user.id)
           
           if (userError) {
-            // Extract error message properly from AppError type
-            let errorCode = 'UNKNOWN'
-            let errorMessage = 'Unknown user loading error'
-            
-            if (typeof userError === 'object' && userError !== null) {
-              const err = userError as any
-              errorCode = err.code || 'UNKNOWN'
-              
-              // AppError has a message field that's a string
-              if (err.message && typeof err.message === 'string') {
-                errorMessage = err.message
-              } else if (err.message && typeof err.message === 'object') {
-                // If message is an object, stringify it
-                errorMessage = JSON.stringify(err.message)
-              } else if (userError instanceof Error) {
-                errorMessage = userError.message
-              } else {
-                errorMessage = String(userError)
-              }
-            } else if (userError instanceof Error) {
-              errorMessage = userError.message
-            } else {
-              errorMessage = String(userError)
-            }
+            // Extract error message from AppError type
+            const errorCode = userError.code || 'UNKNOWN'
+            const errorMessage = userError.message || 'Unknown user loading error'
             
             console.warn('User profile not found (expected for new users):', JSON.stringify({ 
               code: errorCode, 
@@ -116,7 +95,7 @@ function VerifyEmailOtpContent() {
           
           // User exists and has profile - redirect to appropriate onboarding step
           if (userDataWithFlags) {
-            const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+            const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
             router.push(nextStep)
             return
           }
@@ -425,9 +404,9 @@ function VerifyEmailOtpContent() {
           return
         }
         
-        const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+        const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
         if (nextStep === PROFILE_REDIRECT) {
-          const username = (userDataWithFlags as Record<string, unknown>)?.username as string | null
+          const username = (userDataWithFlags as unknown as Record<string, unknown>)?.username as string | null
           router.push(username ? `/@${username}` : '/')
         } else {
           router.push(nextStep)
@@ -475,7 +454,7 @@ function VerifyEmailOtpContent() {
                   // Skip non-enumerable properties
                 }
                 return acc
-              }, {} as Record<string, unknown>),
+              }, {} as unknown as Record<string, unknown>),
             }, null, 2)
           }
           return JSON.stringify(obj, null, 2)

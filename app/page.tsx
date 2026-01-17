@@ -127,7 +127,7 @@ function LandingPageContent() {
         // Get user with preferences to determine next step
         const { data: userDataWithFlags } = await getUserWithPreferences(authUser.id)
         if (userDataWithFlags) {
-          const step = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+          const step = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
           setNextStep(step)
         } else {
           // If no profile data, default to complete-profile

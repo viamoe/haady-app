@@ -283,12 +283,12 @@ function CompleteProfileContent() {
         return
       }
       
-      const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+      const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
       
       // If user has already completed this step, redirect to next step
       if (nextStep !== '/complete-profile') {
         if (nextStep === PROFILE_REDIRECT) {
-          const username = (userDataWithFlags as Record<string, unknown>)?.username as string | null
+          const username = (userDataWithFlags as unknown as Record<string, unknown>)?.username as string | null
           router.push(username ? `/@${username}` : '/')
         } else {
           router.push(nextStep)
@@ -301,10 +301,10 @@ function CompleteProfileContent() {
         setProfile(prev => ({ ...prev, fullName: user.user_metadata.full_name }))
       }
       
-      // Pre-fill birth month and day if dateOfBirth exists
+      // Pre-fill birth month and day if birthdate exists
       const userResult = await getUserWithPreferences(user.id)
-      if (userResult.ok && userResult.data?.date_of_birth) {
-        const dob = new Date(userResult.data.date_of_birth)
+      if (!userResult.error && userResult.data?.birthdate) {
+        const dob = new Date(userResult.data.birthdate)
         if (!isNaN(dob.getTime())) {
           setProfile(prev => ({
             ...prev,
@@ -479,7 +479,7 @@ function CompleteProfileContent() {
         }
       } else if (currentUserData?.username) {
         // User already has a username, use it
-        finalUsername = currentUserData.username
+        finalUsername = currentUserData.username as string
       }
 
       // Create date with default year (2000) for storage since we only collect month/day
@@ -554,7 +554,7 @@ function CompleteProfileContent() {
         }
       } else if (currentUserData?.username) {
         // User already has a username, use it
-        finalUsername = currentUserData.username
+        finalUsername = currentUserData.username as string
       }
 
       // Upsert user profile with minimal data when skipping

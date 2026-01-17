@@ -12,14 +12,14 @@ export { Header, type HeaderProps, type HeaderUser, type HeaderUserProfile } fro
 export { FormInput, type FormInputProps } from './components/form-input'
 export {
   FormSelect,
-  SelectContent as FormSelectContent,
-  SelectGroup as FormSelectGroup,
-  SelectItem as FormSelectItem,
-  SelectLabel as FormSelectLabel,
-  SelectScrollDownButton as FormSelectScrollDownButton,
-  SelectScrollUpButton as FormSelectScrollUpButton,
-  SelectSeparator as FormSelectSeparator,
-  SelectValue as FormSelectValue,
+  FormSelectContent,
+  FormSelectGroup,
+  FormSelectItem,
+  FormSelectLabel,
+  FormSelectScrollDownButton,
+  FormSelectScrollUpButton,
+  FormSelectSeparator,
+  FormSelectValue,
 } from './components/form-select'
 export {
   Select,

@@ -90,7 +90,7 @@ function PhoneAuthContent() {
             return
           }
           
-          const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+          const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
           router.push(nextStep)
           return
         }
@@ -322,7 +322,7 @@ function PhoneAuthContent() {
           return
         }
         
-        const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+        const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
         // No need to pass username in query params since it's already claimed
         router.push(nextStep)
       }

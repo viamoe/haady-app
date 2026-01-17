@@ -8,6 +8,40 @@ import { supabase } from '@/lib/supabase/client';
 import type { AppError } from '@/server/db/errors';
 import { mapSupabaseError } from '@/server/db/errors';
 
+// Re-export types for client use
+export interface UserProfile {
+  id: string;
+  full_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  birthdate: string | null;
+  phone: string | null;
+  country: string | null;
+  city: string | null;
+  profile_completion: number | null;
+  points: number | null;
+  level: number | null;
+  gender: string | null;
+  preferred_language: string | null;
+  xp: number | null;
+  streak_days: number | null;
+  gift_privacy: string | null;
+  last_active_at: string | null;
+  is_active: boolean | null;
+  is_blocked: boolean | null;
+  deleted_at: string | null;
+  onboarding_step: number | null;
+  is_onboarded: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface UserWithPreferences extends UserProfile {
+  has_personality_traits: boolean;
+  has_favorite_brands: boolean;
+  has_favorite_colors: boolean;
+}
+
 /**
  * Get user by ID (client-side)
  */
@@ -65,7 +99,7 @@ export async function getUserByUsername(username: string): Promise<{ data: Recor
 /**
  * Get user with preferences (client-side)
  */
-export async function getUserWithPreferences(userId: string): Promise<{ data: unknown | null; error: AppError | null }> {
+export async function getUserWithPreferences(userId: string): Promise<{ data: UserWithPreferences | null; error: AppError | null }> {
   try {
     // Get user
     const { data: user, error: userError } = await supabase
@@ -94,7 +128,7 @@ export async function getUserWithPreferences(userId: string): Promise<{ data: un
 
     return {
       data: {
-        ...user,
+        ...(user as UserProfile),
         has_personality_traits: (traitsResult.data?.length || 0) > 0,
         has_favorite_brands: (brandsResult.data?.length || 0) > 0,
         has_favorite_colors: (colorsResult.data?.length || 0) > 0,
