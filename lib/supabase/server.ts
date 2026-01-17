@@ -48,3 +48,26 @@ export const createPublicSupabase = () => {
     },
   });
 };
+
+/**
+ * Create a service role Supabase client that bypasses RLS
+ * ONLY use this for server-side operations that need to bypass RLS (e.g., public profile reads)
+ * NEVER expose the service role key to the client
+ */
+export const createServiceRoleSupabase = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error(
+      'Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment variables.'
+    );
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+};

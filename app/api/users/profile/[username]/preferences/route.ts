@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPublicSupabase } from '@/lib/supabase/server'
+import { createServiceRoleSupabase } from '@/lib/supabase/server'
 
 /**
  * GET /api/users/profile/[username]/preferences
  * 
  * Public endpoint to fetch a user's preferences (traits, brands, colors) by username.
- * This bypasses RLS to allow unauthenticated users to view public profile preferences.
+ * Uses service role to bypass RLS and allow unauthenticated users to view public profile preferences.
  */
 export async function GET(
   request: NextRequest,
@@ -32,7 +32,8 @@ export async function GET(
       )
     }
 
-    const supabase = createPublicSupabase()
+    // Use service role to bypass RLS for public profile reads
+    const supabase = createServiceRoleSupabase()
     
     // First get the user ID from username
     const { data: profile, error: profileError } = await supabase

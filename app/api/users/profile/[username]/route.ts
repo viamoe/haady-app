@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPublicSupabase } from '@/lib/supabase/server'
+import { createServiceRoleSupabase } from '@/lib/supabase/server'
 
 /**
  * GET /api/users/profile/[username]
  * 
  * Public endpoint to fetch a user's profile by username.
- * This bypasses RLS to allow unauthenticated users to view public profiles.
+ * Uses service role to bypass RLS and allow unauthenticated users to view public profiles.
  */
 export async function GET(
   request: NextRequest,
@@ -32,7 +32,8 @@ export async function GET(
       )
     }
 
-    const supabase = createPublicSupabase()
+    // Use service role to bypass RLS for public profile reads
+    const supabase = createServiceRoleSupabase()
     
     // Fetch public profile data (limited fields for privacy)
     const { data: profile, error } = await supabase
