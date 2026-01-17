@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { getCurrentUser } from '@/lib/supabase/auth-helpers'
 import { Button, Header } from '@haady/ui'
-import { getUserByUsername, getAllTraits, getAllBrands, getAllColors, getUserTraits, getUserBrands, getUserColors, getUserById } from '@/lib/db/client-repos'
+import { getUserById } from '@/lib/db/client-repos'
 import { toast } from '@/lib/toast'
 import { useLocale } from '@/i18n/context'
 import { User, MapPin, Sparkles, Palette, Tag, Gift, Share2, Copy, Check } from 'lucide-react'
@@ -96,16 +96,23 @@ export default function ProfilePage() {
         const decodedUsername = decodeURIComponent(username)
         const cleanUsername = decodedUsername.startsWith('@') ? decodedUsername.slice(1) : decodedUsername
         
-        // Fetch profile by username
-        const { data: profileData, error: profileError } = await getUserByUsername(cleanUsername)
+        // Fetch profile by username using public API (works for unauthenticated users)
+        const profileResponse = await fetch(`/api/users/profile/${encodeURIComponent(cleanUsername)}`)
+        const profileResult = await profileResponse.json()
         
-        if (profileError) {
-          console.error('Error loading profile:', profileError)
+        if (!profileResponse.ok || !profileResult.ok) {
+          if (profileResult.error?.code === 'NOT_FOUND') {
+            setNotFound(true)
+            setIsLoading(false)
+            return
+          }
+          console.error('Error loading profile:', profileResult.error)
           setNotFound(true)
           setIsLoading(false)
           return
         }
         
+        const profileData = profileResult.data
         if (!profileData) {
           // User not found (not an error, just doesn't exist)
           setNotFound(true)
@@ -113,7 +120,7 @@ export default function ProfilePage() {
           return
         }
         
-        setProfile(profileData as unknown as UserProfile)
+        setProfile(profileData as UserProfile)
         
         // Check if current user is the profile owner
         const { user } = await getCurrentUser()
@@ -134,32 +141,14 @@ export default function ProfilePage() {
           }
         }
         
-        // Load user's traits, brands, and colors
-        const [traitsResult, brandsResult, colorsResult] = await Promise.all([
-          getAllTraits(),
-          getAllBrands(),
-          getAllColors(),
-        ])
-
-        const [userTraitsResult, userBrandsResult, userColorsResult] = await Promise.all([
-          getUserTraits((profileData as any).id),
-          getUserBrands((profileData as any).id),
-          getUserColors((profileData as any).id),
-        ])
-
-        if (userTraitsResult.data && userTraitsResult.data.length > 0 && traitsResult.data) {
-          const allTraits = traitsResult.data as Trait[]
-          setTraits(allTraits.filter((t) => userTraitsResult.data.includes(t.id)))
-        }
-
-        if (userBrandsResult.data && userBrandsResult.data.length > 0 && brandsResult.data) {
-          const allBrands = brandsResult.data as Brand[]
-          setBrands(allBrands.filter((b) => userBrandsResult.data.includes(b.id)))
-        }
-
-        if (userColorsResult.data && userColorsResult.data.length > 0 && colorsResult.data) {
-          const allColors = colorsResult.data as Color[]
-          setColors(allColors.filter((c) => userColorsResult.data.includes(c.id)))
+        // Load user's traits, brands, and colors using public API
+        const prefsResponse = await fetch(`/api/users/profile/${encodeURIComponent(cleanUsername)}/preferences`)
+        const prefsResult = await prefsResponse.json()
+        
+        if (prefsResponse.ok && prefsResult.ok && prefsResult.data) {
+          setTraits(prefsResult.data.traits || [])
+          setBrands(prefsResult.data.brands || [])
+          setColors(prefsResult.data.colors || [])
         }
 
         setIsLoading(false)
