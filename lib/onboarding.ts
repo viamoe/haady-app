@@ -3,23 +3,29 @@
  */
 export const ONBOARDING_STEPS = {
   PERSONAL_INFO: 1,        // Unskippable
-  CLAIM_USERNAME: 2,       // Unskippable
-  PERSONALITY_TRAITS: 3,   // Skippable
-  FAVORITE_BRANDS: 4,      // Skippable
-  FAVORITE_COLORS: 5,      // Skippable
-  COMPLETED: 6,
+  PERSONALITY_TRAITS: 2,   // Skippable (was step 3, now step 2)
+  FAVORITE_BRANDS: 3,      // Skippable (was step 4, now step 3)
+  FAVORITE_COLORS: 4,      // Skippable (was step 5, now step 4)
+  COMPLETED: 5,            // (was step 6, now step 5)
 } as const
 
 /**
+ * Special redirect indicator for profile page
+ * When this is returned, the calling code should redirect to /{username}
+ */
+export const PROFILE_REDIRECT = '__PROFILE__' as const
+
+/**
  * Onboarding step paths
+ * Note: CLAIM_USERNAME step has been removed - username is now handled in complete-profile
+ * Note: COMPLETED redirects to user's profile page (/{username})
  */
 export const ONBOARDING_PATHS = {
   [ONBOARDING_STEPS.PERSONAL_INFO]: '/complete-profile',
-  [ONBOARDING_STEPS.CLAIM_USERNAME]: '/claim-username',
   [ONBOARDING_STEPS.PERSONALITY_TRAITS]: '/personality-traits',
   [ONBOARDING_STEPS.FAVORITE_BRANDS]: '/favorite-brands',
   [ONBOARDING_STEPS.FAVORITE_COLORS]: '/favorite-colors',
-  [ONBOARDING_STEPS.COMPLETED]: '/home',
+  [ONBOARDING_STEPS.COMPLETED]: PROFILE_REDIRECT,
 } as const
 
 /**
@@ -36,14 +42,14 @@ export function getNextOnboardingStep(userData: {
   has_favorite_brands?: boolean | null
   has_favorite_colors?: boolean | null
 }): string {
-  // If already onboarded, go to home
+  // If already onboarded, go to profile
   if (userData?.is_onboarded) {
-    return '/home'
+    return PROFILE_REDIRECT
   }
 
-  // If onboarding_step is COMPLETED, go to home (even if is_onboarded is not set)
+  // If onboarding_step is COMPLETED, go to profile (even if is_onboarded is not set)
   if (userData?.onboarding_step === ONBOARDING_STEPS.COMPLETED) {
-    return '/home'
+    return PROFILE_REDIRECT
   }
 
   // Step 1: Personal Information (Unskippable)
@@ -51,41 +57,34 @@ export function getNextOnboardingStep(userData: {
     return ONBOARDING_PATHS[ONBOARDING_STEPS.PERSONAL_INFO]
   }
 
-  // Step 2: Claim Username (Unskippable)
-  if (!userData?.username) {
-    return ONBOARDING_PATHS[ONBOARDING_STEPS.CLAIM_USERNAME]
-  }
-
-  // User has completed required steps (full_name and username)
+  // Note: Username is now handled in complete-profile step, so we skip the claim-username step
+  // User has completed required step (full_name)
   // Now check optional steps - only redirect if they're explicitly on an optional step
   const currentStep = userData?.onboarding_step
 
-  // If no onboarding_step is set but user has required fields, they can go to home
+  // If no onboarding_step is set but user has required fields, they can go to profile
   // (optional steps are skippable)
   if (!currentStep) {
-    return '/home'
+    return PROFILE_REDIRECT
   }
 
-  // Step 3: Personality Traits (Skippable)
-  // Only redirect if they're explicitly on this step
+  // Step 2: Personality Traits (Skippable)
   if (currentStep === ONBOARDING_STEPS.PERSONALITY_TRAITS) {
     return ONBOARDING_PATHS[ONBOARDING_STEPS.PERSONALITY_TRAITS]
   }
 
-  // Step 4: Favorite Brands (Skippable)
-  // Only redirect if they're explicitly on this step
+  // Step 3: Favorite Brands (Skippable)
   if (currentStep === ONBOARDING_STEPS.FAVORITE_BRANDS) {
     return ONBOARDING_PATHS[ONBOARDING_STEPS.FAVORITE_BRANDS]
   }
 
-  // Step 5: Favorite Colors (Skippable)
-  // Only redirect if they're explicitly on this step
+  // Step 4: Favorite Colors (Skippable)
   if (currentStep === ONBOARDING_STEPS.FAVORITE_COLORS) {
     return ONBOARDING_PATHS[ONBOARDING_STEPS.FAVORITE_COLORS]
   }
 
   // All steps completed or user has completed required steps and can skip optional ones
-  return '/home'
+  return PROFILE_REDIRECT
 }
 
 /**
@@ -105,22 +104,19 @@ export function getCurrentOnboardingStep(userData: {
     return ONBOARDING_STEPS.PERSONAL_INFO
   }
 
-  // Step 2: Claim Username (Unskippable)
-  if (!userData?.username) {
-    return ONBOARDING_STEPS.CLAIM_USERNAME
-  }
+  // Note: Username is now handled in complete-profile step, so we skip the claim-username step
 
-  // Step 3: Personality Traits (Skippable)
+  // Step 2: Personality Traits (Skippable) - was step 3, now step 2
   if (!userData?.has_personality_traits) {
     return ONBOARDING_STEPS.PERSONALITY_TRAITS
   }
 
-  // Step 4: Favorite Brands (Skippable)
+  // Step 3: Favorite Brands (Skippable) - was step 4, now step 3
   if (!userData?.has_favorite_brands) {
     return ONBOARDING_STEPS.FAVORITE_BRANDS
   }
 
-  // Step 5: Favorite Colors (Skippable)
+  // Step 4: Favorite Colors (Skippable) - was step 5, now step 4
   if (!userData?.has_favorite_colors) {
     return ONBOARDING_STEPS.FAVORITE_COLORS
   }
@@ -141,7 +137,7 @@ export function calculateProfileCompletion(userData: {
   has_favorite_brands?: boolean | null
   has_favorite_colors?: boolean | null
 }): number {
-  const totalSteps = 5 // Total onboarding steps
+  const totalSteps = 4 // Total onboarding steps (removed claim-username as separate step)
   let completedSteps = 0
 
   // Step 1: Personal Information (Required)
@@ -149,22 +145,19 @@ export function calculateProfileCompletion(userData: {
     completedSteps++
   }
 
-  // Step 2: Claim Username (Required)
-  if (userData?.username) {
-    completedSteps++
-  }
+  // Note: Username is now part of personal information step, not counted separately
 
-  // Step 3: Personality Traits (Optional)
+  // Step 2: Personality Traits (Optional) - was step 3, now step 2
   if (userData?.has_personality_traits) {
     completedSteps++
   }
 
-  // Step 4: Favorite Brands (Optional)
+  // Step 3: Favorite Brands (Optional) - was step 4, now step 3
   if (userData?.has_favorite_brands) {
     completedSteps++
   }
 
-  // Step 5: Favorite Colors (Optional)
+  // Step 4: Favorite Colors (Optional) - was step 5, now step 4
   if (userData?.has_favorite_colors) {
     completedSteps++
   }

@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { format } from 'date-fns'
 import { ar, enUS } from 'date-fns/locale'
-import { Calendar as CalendarIcon } from 'lucide-react'
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -13,6 +13,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { useLocale } from '@/i18n/context'
+import { useNavigation, type CaptionProps } from 'react-day-picker'
 
 interface DatePickerProps {
   date?: Date
@@ -20,6 +21,35 @@ interface DatePickerProps {
   placeholder?: string
   className?: string
   disabled?: boolean
+}
+
+// Custom caption component that only shows month (no year)
+function MonthOnlyCaption(props: CaptionProps) {
+  const { goToMonth, nextMonth, previousMonth } = useNavigation()
+  const { locale } = useLocale()
+  const monthLabel = props.displayMonth.toLocaleString(locale === 'ar' ? 'ar' : 'en', { month: 'long' })
+  
+  return (
+    <div className="flex items-center justify-between px-1 py-2">
+      <button
+        onClick={() => previousMonth && goToMonth(previousMonth)}
+        disabled={!previousMonth}
+        className="disabled:opacity-50 disabled:cursor-not-allowed"
+        aria-label="Previous month"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <span className="text-sm font-medium">{monthLabel}</span>
+      <button
+        onClick={() => nextMonth && goToMonth(nextMonth)}
+        disabled={!nextMonth}
+        className="disabled:opacity-50 disabled:cursor-not-allowed"
+        aria-label="Next month"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  )
 }
 
 export function DatePicker({
@@ -48,7 +78,7 @@ export function DatePicker({
           dir={isRTL ? 'rtl' : 'ltr'}
         >
           <span className={cn('flex-1', isRTL ? 'text-right' : 'text-left')}>
-            {date ? format(date, 'PPP', { locale: dateLocale }) : placeholder}
+            {date ? format(date, 'MMMM d', { locale: dateLocale }) : placeholder}
           </span>
           <CalendarIcon className={cn('h-4 w-4', isRTL ? 'ml-2' : 'ml-2')} />
         </Button>
@@ -64,9 +94,9 @@ export function DatePicker({
           disabled={(date) => date > new Date()}
           locale={dateLocale}
           dir={isRTL ? 'rtl' : 'ltr'}
-          captionLayout="dropdown"
-          fromYear={1900}
-          toYear={new Date().getFullYear()}
+          components={{
+            Caption: MonthOnlyCaption,
+          }}
           initialFocus
         />
       </PopoverContent>

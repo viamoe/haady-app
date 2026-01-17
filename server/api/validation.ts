@@ -6,13 +6,33 @@ import { z } from 'zod'
 const uuidSchema = z.string().uuid('Invalid UUID format')
 
 /**
- * Reserved words that cannot be used as usernames
+ * Reserved usernames that cannot be used
+ * Includes system routes and common reserved terms to prevent URL conflicts
  */
-const RESERVED_WORDS = [
-  'admin', 'administrator', 'support', 'haady', 'payments', 'api', 
+export const RESERVED_USERNAMES = [
+  // System routes
+  'home', 'login', 'logout', 'signup', 'signin', 'signout',
+  'register', 'auth', 'callback', 'verify', 'verify-email', 'verify-email-otp',
+  'complete-profile', 'personality-traits', 'favorite-brands', 'favorite-colors',
+  'create-account', 'forgot-password', 'reset-password', 'phone',
+  'profile', 'settings', 'account', 'dashboard', 'notifications',
+  'messages', 'inbox', 'search', 'explore', 'discover',
+  'wishlist', 'gifts', 'my-gifts', 'orders', 'checkout', 'cart',
+  
+  // API and system
+  'api', 'admin', 'administrator', 'support', 'haady',
   'www', 'mail', 'email', 'root', 'system', 'test', 'testing',
-  'null', 'undefined', 'true', 'false', 'about', 'contact',
-  'help', 'faq', 'terms', 'privacy', 'legal', 'blog', 'news'
+  'null', 'undefined', 'true', 'false',
+  
+  // Common pages
+  'about', 'contact', 'help', 'faq', 'terms', 'privacy', 'legal',
+  'blog', 'news', 'press', 'careers', 'jobs',
+  
+  // Reserved for future use
+  'store', 'stores', 'shop', 'shops', 'business', 'merchant', 'merchants',
+  'seller', 'sellers', 'buyer', 'buyers', 'user', 'users',
+  'gift', 'send', 'receive', 'payments', 'billing', 'subscription',
+  'premium', 'pro', 'plus', 'vip', 'official', 'verified',
 ]
 
 /**
@@ -57,7 +77,7 @@ export const usernameSchema = z.string()
     'Username cannot be all numbers'
   )
   .refine(
-    (val) => !RESERVED_WORDS.includes(val.toLowerCase()),
+    (val) => !RESERVED_USERNAMES.includes(val.toLowerCase()),
     'This username is reserved and cannot be used'
   )
 

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { getCurrentUser } from '@/lib/supabase/auth-helpers'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button, Input } from '@haady/ui'
+import { isAdminUser, getUserWithPreferences, updateUser, upsertUser, getUserById } from '@/lib/db/client-repos'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
 import { getNextOnboardingStep } from '@/lib/onboarding'
@@ -37,10 +37,14 @@ const COUNTRY_CODES = [
   { code: '+44', country: 'GB', flag: '🇬🇧' },
 ]
 
-export default function PhoneAuth() {
+function PhoneAuthContent() {
   const t = useTranslations()
   const { isRTL, locale } = useLocale()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  // Get username from query params (from landing page flow)
+  const usernameFromQuery = searchParams?.get('username') || null
   
   const [step, setStep] = useState<PhoneStep>('phone')
   const [isLoading, setIsLoading] = useState(false)
@@ -66,48 +70,27 @@ export default function PhoneAuth() {
         
         if (user) {
           // Check if user is an admin first - admins skip onboarding
-          const { data: adminData } = await supabase
-            .from('admin_users')
-            .select('id')
-            .eq('id', user.id)
-            .eq('is_active', true)
-            .single()
+          const { isAdmin, error: adminError } = await isAdminUser(user.id)
           
-          if (adminData) {
-            router.push('/home')
+          if (adminError) {
+            console.error('Error checking admin status:', adminError)
+          }
+          
+          if (isAdmin) {
+            router.push('/')
             return
           }
 
           // User is authenticated, check their onboarding status and redirect
-          const { data: userData } = await supabase
-            .from('users')
-            .select('full_name, username, onboarding_step, is_onboarded')
-            .eq('id', user.id)
-            .single()
+          const { data: userDataWithFlags, error: userError } = await getUserWithPreferences(user.id)
           
-          const { data: traitsData } = await supabase
-            .from('user_traits')
-            .select('trait_id')
-            .eq('user_id', user.id)
-          
-          const { data: brandsData } = await supabase
-            .from('user_brands')
-            .select('brand_id')
-            .eq('user_id', user.id)
-          
-          const { data: colorsData } = await supabase
-            .from('user_colors')
-            .select('color_id')
-            .eq('user_id', user.id)
-          
-          const userDataWithFlags = {
-            ...userData,
-            has_personality_traits: (traitsData?.length || 0) > 0,
-            has_favorite_brands: (brandsData?.length || 0) > 0,
-            has_favorite_colors: (colorsData?.length || 0) > 0,
+          if (userError) {
+            console.error('Error loading user:', userError)
+            setIsCheckingAuth(false)
+            return
           }
           
-          const nextStep = getNextOnboardingStep(userDataWithFlags || {})
+          const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
           router.push(nextStep)
           return
         }
@@ -234,9 +217,10 @@ export default function PhoneAuth() {
       toast.success(t('toast.otpSent') || 'OTP sent successfully')
       setStep('verify-otp')
       setResendTimer(60) // 60 second cooldown
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : t('toast.errorOccurred')
       toast.error(t('toast.otpSendFailed') || 'Failed to send OTP', {
-        description: error.message || t('toast.errorOccurred'),
+        description: errorMessage,
       })
     } finally {
       setIsLoading(false)
@@ -267,59 +251,85 @@ export default function PhoneAuth() {
 
       if (data.user) {
         // Check if this is a new user or existing user
-        const { data: userData } = await supabase
-          .from('users')
-          .select('id, full_name, username, onboarding_step, is_onboarded')
-          .eq('id', data.user.id)
-          .single()
+        const { data: userData, error: getUserError } = await getUserById(data.user.id)
+
+        if (!userData && getUserError?.code !== 'NOT_FOUND') {
+          // Error loading user
+          throw new Error(getUserError?.message || 'Failed to load user')
+        }
+
+        // Claim username if provided (from landing page flow)
+        let claimedUsername: string | null = null
+        if (usernameFromQuery) {
+          const normalizedUsername = usernameFromQuery.trim().toLowerCase()
+          
+          // Claim username via API
+          try {
+            const claimResponse = await fetch('/api/users/claim-username', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username: normalizedUsername }),
+            })
+            
+            const claimData = await claimResponse.json()
+            
+            if (claimData.ok && claimData.data?.username) {
+              claimedUsername = claimData.data.username
+            } else {
+              // Username not available - user can choose a new one during onboarding
+            }
+          } catch (error) {
+            console.warn(`⚠️ Failed to claim username "${normalizedUsername}":`, error)
+          }
+        }
 
         if (!userData) {
-          // New user - create profile
-          await supabase
-            .from('users')
-            .insert({
-              id: data.user.id,
-              phone: fullPhone,
-              onboarding_step: 1,
-              is_onboarded: false,
-            })
+          // New user - create profile with username if available
+          const { error: upsertError } = await upsertUser(data.user.id, {
+            phone: fullPhone,
+            username: claimedUsername,
+            onboarding_step: 1,
+            is_onboarded: false,
+          })
+
+          if (upsertError) {
+            throw new Error(upsertError.message)
+          }
         } else {
-          // Existing user - update last active
-          await supabase
-            .from('users')
-            .update({ last_active_at: new Date().toISOString() })
-            .eq('id', data.user.id)
+          // Existing user - update last active and username if not set
+          const updateData: { last_active_at: string; username?: string } = {
+            last_active_at: new Date().toISOString(),
+          }
+          
+          if (claimedUsername && !userData.username) {
+            updateData.username = claimedUsername
+          }
+          
+          const { error: updateError } = await updateUser(data.user.id, updateData)
+
+          if (updateError) {
+            console.error('Error updating user:', updateError)
+          }
         }
 
-        // Check junction tables for completion flags
-        const { data: traitsData } = await supabase
-          .from('user_traits')
-          .select('trait_id')
-          .eq('user_id', data.user.id)
+        // Get user with preferences to check onboarding status
+        const { data: userDataWithFlags, error: userPrefsError } = await getUserWithPreferences(data.user.id)
         
-        const { data: brandsData } = await supabase
-          .from('user_brands')
-          .select('brand_id')
-          .eq('user_id', data.user.id)
-        
-        const { data: colorsData } = await supabase
-          .from('user_colors')
-          .select('color_id')
-          .eq('user_id', data.user.id)
-        
-        const userDataWithFlags = {
-          ...userData,
-          has_personality_traits: (traitsData?.length || 0) > 0,
-          has_favorite_brands: (brandsData?.length || 0) > 0,
-          has_favorite_colors: (colorsData?.length || 0) > 0,
+        if (userPrefsError) {
+          console.error('Error loading user preferences:', userPrefsError)
+          // Still redirect to onboarding step 1 if we can't load preferences
+          router.push('/complete-profile')
+          return
         }
         
-        const nextStep = getNextOnboardingStep(userDataWithFlags || {})
+        const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
+        // No need to pass username in query params since it's already claimed
         router.push(nextStep)
       }
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : t('toast.errorOccurred')
       toast.error(t('toast.otpVerificationFailed') || 'OTP verification failed', {
-        description: error.message || t('toast.errorOccurred'),
+        description: errorMessage,
       })
     } finally {
       setIsLoading(false)
@@ -344,9 +354,10 @@ export default function PhoneAuth() {
 
       toast.success(t('toast.otpResent') || 'OTP resent successfully')
       setResendTimer(60)
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : t('toast.errorOccurred')
       toast.error(t('toast.otpSendFailed') || 'Failed to resend OTP', {
-        description: error.message || t('toast.errorOccurred'),
+        description: errorMessage,
       })
     } finally {
       setIsResending(false)
@@ -360,7 +371,7 @@ export default function PhoneAuth() {
 
   if (isCheckingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-100 via-orange-200 to-orange-400">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-secondary/80 to-primary/20">
         <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin" />
       </div>
     )
@@ -369,7 +380,7 @@ export default function PhoneAuth() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Gradient Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-amber-100 via-orange-200 via-50% to-orange-400" />
+      <div className="absolute inset-0 bg-gradient-to-br from-secondary via-secondary/80 via-50% to-primary/20" />
       <div className="absolute inset-0 bg-gradient-to-tr from-rose-200/40 via-transparent to-purple-200/30" />
       
       {/* Language Switcher in top right/left based on RTL */}
@@ -578,12 +589,12 @@ export default function PhoneAuth() {
                       type="button"
                       onClick={handleResendOtp}
                       disabled={resendTimer > 0 || isResending}
-                      className="text-sm text-gray-600 hover:text-rose-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      className="text-sm text-gray-600 hover:text-primary font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                       {isResending ? (
                         t('auth.resendingOtp') || 'Resending...'
                       ) : resendTimer > 0 ? (
-                        t('auth.resendOtpIn')?.replace('{seconds}', resendTimer.toString()) || `Resend OTP in ${resendTimer}s`
+                        t('auth.resendOtpIn', { seconds: resendTimer }) || `Resend OTP in ${resendTimer}s`
                       ) : (
                         t('auth.resendOtp') || 'Resend OTP'
                       )}
@@ -612,6 +623,21 @@ export default function PhoneAuth() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function PhoneAuth() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-secondary/80 to-primary/20">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white">Loading...</p>
+        </div>
+      </div>
+    }>
+      <PhoneAuthContent />
+    </Suspense>
   )
 }
 

@@ -1,7 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { getNextOnboardingStep } from '@/lib/onboarding'
+import { getNextOnboardingStep, PROFILE_REDIRECT } from '@/lib/onboarding'
+import { createServerSupabase } from '@/lib/supabase/server'
+import { isAdminUser, getUserWithPreferences, upsertUser, updateUser, getUserById } from '@/server/db'
+import { checkUsernameAvailability, updateUser as updateUserRepo } from '@/server/db/users.repo'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -112,7 +115,9 @@ export async function GET(request: Request) {
   if (user) {
     // Check if user has a merchant account - if so, they might have come from business.haady.app
     // Redirect them to the business app dashboard
-    const { data: merchantUser } = await supabase
+    // Note: merchant_users is not in our repo yet, so we'll keep this direct call for now
+    const serverSupabase = await createServerSupabase()
+    const { data: merchantUser } = await serverSupabase
       .from('merchant_users')
       .select('merchant_id')
       .eq('auth_user_id', user.id)
@@ -123,76 +128,99 @@ export async function GET(request: Request) {
       return NextResponse.redirect('https://business.haady.app/dashboard')
     }
     
+    // Get username from query params if present (from landing page flow)
+    const usernameFromQuery = searchParams.get('username')
+    let claimedUsername: string | null = null
+
     // Create or update user profile
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id, full_name, username, onboarding_step, is_onboarded')
-      .eq('id', user.id)
-      .single()
+    const { data: existingUser } = await getUserById(user.id)
 
     if (!existingUser) {
       // New user - create profile with initial onboarding state
-      await supabase
-        .from('users')
-        .insert({
-          id: user.id,
+      // If username is provided, try to claim it immediately
+      if (usernameFromQuery) {
+        const normalizedUsername = usernameFromQuery.trim().toLowerCase()
+        
+        // Check availability and claim username
+        const availabilityResult = await checkUsernameAvailability(normalizedUsername)
+        
+        if (availabilityResult.available && !availabilityResult.error) {
+          // Username is available, claim it during profile creation
+          const updateResult = await upsertUser(user.id, {
+            username: normalizedUsername,
+            last_active_at: new Date().toISOString(),
+            onboarding_step: 1,
+            is_onboarded: false,
+          })
+          
+          if (!updateResult.error) {
+            claimedUsername = normalizedUsername
+            console.log(`✅ Username "${normalizedUsername}" claimed for user ${user.id}`)
+          } else {
+            // If username claim failed (e.g., race condition), log and continue
+            console.warn(`⚠️ Failed to claim username "${normalizedUsername}" during profile creation:`, updateResult.error)
+          }
+        } else {
+          // Username not available or error checking - log and continue without username
+          console.warn(`⚠️ Username "${normalizedUsername}" not available or error:`, availabilityResult.error?.message || 'Username already taken')
+        }
+      }
+      
+      // If username wasn't claimed, create profile without it
+      if (!claimedUsername) {
+        await upsertUser(user.id, {
           last_active_at: new Date().toISOString(),
           onboarding_step: 1,
           is_onboarded: false,
         })
+      }
     } else {
       // Existing user - update last active
-      await supabase
-        .from('users')
-        .update({ last_active_at: new Date().toISOString() })
-        .eq('id', user.id)
+      // If username is provided and user doesn't have one, try to claim it
+      if (usernameFromQuery && !existingUser.username) {
+        const normalizedUsername = usernameFromQuery.trim().toLowerCase()
+        
+        const availabilityResult = await checkUsernameAvailability(normalizedUsername)
+        
+        if (availabilityResult.available && !availabilityResult.error) {
+          const updateResult = await updateUserRepo(user.id, {
+            username: normalizedUsername,
+          })
+          
+          if (!updateResult.error) {
+            claimedUsername = normalizedUsername
+            console.log(`✅ Username "${normalizedUsername}" claimed for existing user ${user.id}`)
+          } else {
+            console.warn(`⚠️ Failed to claim username "${normalizedUsername}" for existing user:`, updateResult.error)
+          }
+        } else {
+          console.warn(`⚠️ Username "${normalizedUsername}" not available for existing user:`, availabilityResult.error?.message || 'Username already taken')
+        }
+      }
+      
+      // Update last active
+      await updateUser(user.id, {
+        last_active_at: new Date().toISOString(),
+      })
     }
     
     // Check if user is an admin first - admins skip onboarding
-    const { data: adminData } = await supabase
-      .from('admin_users')
-      .select('id')
-      .eq('id', user.id)
-      .eq('is_active', true)
-      .single()
+    const { isAdmin } = await isAdminUser(user.id)
     
-    if (adminData) {
-      return NextResponse.redirect(`${origin}/home`)
+    if (isAdmin) {
+      return NextResponse.redirect(`${origin}/`)
     }
 
     // Get fresh user data for onboarding check
-    const { data: userData } = await supabase
-      .from('users')
-      .select('full_name, username, onboarding_step, is_onboarded')
-      .eq('id', user.id)
-      .single()
+    const { data: userDataWithFlags } = await getUserWithPreferences(user.id)
     
-    // Check junction tables for completion flags
-    const { data: traitsData } = await supabase
-      .from('user_traits')
-      .select('trait_id')
-      .eq('user_id', user.id)
+    const nextStep = getNextOnboardingStep((userDataWithFlags as unknown as Record<string, unknown>) || {})
     
-    const { data: brandsData } = await supabase
-      .from('user_brands')
-      .select('brand_id')
-      .eq('user_id', user.id)
-    
-    const { data: colorsData } = await supabase
-      .from('user_colors')
-      .select('color_id')
-      .eq('user_id', user.id)
-    
-    const userDataWithFlags = {
-      ...userData,
-      has_personality_traits: (traitsData?.length || 0) > 0,
-      has_favorite_brands: (brandsData?.length || 0) > 0,
-      has_favorite_colors: (colorsData?.length || 0) > 0,
+    // Redirect to the correct onboarding step or profile
+    if (nextStep === PROFILE_REDIRECT) {
+      const username = (userDataWithFlags as unknown as Record<string, unknown>)?.username as string | null
+      return NextResponse.redirect(username ? `${origin}/@${username}` : `${origin}/`)
     }
-    
-    const nextStep = getNextOnboardingStep(userDataWithFlags || {})
-    
-    // Redirect to the correct onboarding step
     return NextResponse.redirect(`${origin}${nextStep}`)
   }
 

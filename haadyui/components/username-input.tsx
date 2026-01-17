@@ -14,12 +14,32 @@ export type TranslationFunction = (key: string) => string
 
 /**
  * Reserved words that cannot be used as usernames
+ * Includes system routes and common reserved terms to prevent URL conflicts
  */
-const RESERVED_WORDS = [
-  'admin', 'administrator', 'support', 'haady', 'payments', 'api', 
+export const RESERVED_USERNAMES = [
+  // System routes
+  'home', 'login', 'logout', 'signup', 'signin', 'signout',
+  'register', 'auth', 'callback', 'verify', 'verify-email', 'verify-email-otp',
+  'complete-profile', 'personality-traits', 'favorite-brands', 'favorite-colors',
+  'create-account', 'forgot-password', 'reset-password', 'phone',
+  'profile', 'settings', 'account', 'dashboard', 'notifications',
+  'messages', 'inbox', 'search', 'explore', 'discover',
+  'wishlist', 'gifts', 'my-gifts', 'orders', 'checkout', 'cart',
+  
+  // API and system
+  'api', 'admin', 'administrator', 'support', 'haady',
   'www', 'mail', 'email', 'root', 'system', 'test', 'testing',
-  'null', 'undefined', 'true', 'false', 'about', 'contact',
-  'help', 'faq', 'terms', 'privacy', 'legal', 'blog', 'news'
+  'null', 'undefined', 'true', 'false',
+  
+  // Common pages
+  'about', 'contact', 'help', 'faq', 'terms', 'privacy', 'legal',
+  'blog', 'news', 'press', 'careers', 'jobs',
+  
+  // Reserved for future use
+  'store', 'stores', 'shop', 'shops', 'business', 'merchant', 'merchants',
+  'seller', 'sellers', 'buyer', 'buyers', 'user', 'users',
+  'gift', 'send', 'receive', 'payments', 'billing', 'subscription',
+  'premium', 'pro', 'plus', 'vip', 'official', 'verified',
 ]
 
 /**
@@ -115,7 +135,7 @@ export function validateUsername(
   
   // Check reserved words (case-insensitive)
   const lowerTrimmed = trimmed.toLowerCase()
-  if (RESERVED_WORDS.includes(lowerTrimmed)) {
+  if (RESERVED_USERNAMES.includes(lowerTrimmed)) {
     return { 
       isValid: false, 
       error: t ? t('validation.usernameReserved') : 'This username is reserved and cannot be used' 
@@ -142,7 +162,7 @@ export function suggestUsernames(username: string, maxSuggestions: number = 5): 
     // Ensure it meets minimum length requirement
     if (clean.length >= 4 && clean.length <= 12 && !seen.has(clean)) {
       // Validate it matches username rules
-      if (/^[a-zA-Z]/.test(clean) && /[a-zA-Z0-9]$/.test(clean) && /^[a-zA-Z0-9_.]+$/.test(clean) && !/[._]{2,}|\._|_\./.test(clean) && !/^\d+$/.test(clean) && !RESERVED_WORDS.includes(clean)) {
+      if (/^[a-zA-Z]/.test(clean) && /[a-zA-Z0-9]$/.test(clean) && /^[a-zA-Z0-9_.]+$/.test(clean) && !/[._]{2,}|\._|_\./.test(clean) && !/^\d+$/.test(clean) && !RESERVED_USERNAMES.includes(clean)) {
         suggestions.push(clean)
         seen.add(clean)
       }

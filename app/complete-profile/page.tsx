@@ -1,64 +1,50 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { getCurrentUser } from '@/lib/supabase/auth-helpers'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button, Input } from '@haady/ui'
+import { isAdminUser, getUserWithPreferences, getUserById, updateUser, upsertUser } from '@/lib/db/client-repos'
 import { Label } from '@/components/ui/label'
-import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
-import { CheckCircle2, ArrowLeft, ArrowRight, User, MapPin, Gift } from 'lucide-react'
-import { LanguageSwitcher } from '@/components/language-switcher'
+import { CheckCircle2, Globe } from 'lucide-react'
 import { useLocale } from '@/i18n/context'
-import { motion } from 'framer-motion'
+import { format } from 'date-fns'
+import { ar, enUS } from 'date-fns/locale'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Flag } from '@/components/flag'
+} from '@haady/ui'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
-import { getNextOnboardingStep, ONBOARDING_STEPS } from '@/lib/onboarding'
+import { getNextOnboardingStep, ONBOARDING_STEPS, ONBOARDING_PATHS, PROFILE_REDIRECT } from '@/lib/onboarding'
+import { Skeleton } from '@/components/ui/skeleton'
 
 const HAADY_LOGO_URL = 'https://rovphhvuuxwbhgnsifto.supabase.co/storage/v1/object/public/assets/haady-icon.svg'
 
-const gulfCountries = [
-  { code: 'SA', name: 'Saudi Arabia', nameAr: 'المملكة العربية السعودية', phoneCode: '+966' },
-  { code: 'AE', name: 'United Arab Emirates', nameAr: 'الإمارات العربية المتحدة', phoneCode: '+971' },
-  { code: 'KW', name: 'Kuwait', nameAr: 'الكويت', phoneCode: '+965' },
-  { code: 'QA', name: 'Qatar', nameAr: 'قطر', phoneCode: '+974' },
-  { code: 'BH', name: 'Bahrain', nameAr: 'البحرين', phoneCode: '+973' },
-  { code: 'OM', name: 'Oman', nameAr: 'عُمان', phoneCode: '+968' },
-]
+// Country type matching API response
+interface Country {
+  code: string // iso2
+  name: string
+  nameAr: string | null
+  phoneCode: string // phone_code
+  flagUrl: string | null // flag_url
+}
 
-const cities = [
-  // Saudi Arabia
-  { name: 'Riyadh', nameAr: 'الرياض', countryCode: 'SA' },
-  { name: 'Jeddah', nameAr: 'جدة', countryCode: 'SA' },
-  { name: 'Mecca', nameAr: 'مكة المكرمة', countryCode: 'SA' },
-  { name: 'Medina', nameAr: 'المدينة المنورة', countryCode: 'SA' },
-  { name: 'Dammam', nameAr: 'الدمام', countryCode: 'SA' },
-  { name: 'Khobar', nameAr: 'الخبر', countryCode: 'SA' },
-  { name: 'Abha', nameAr: 'أبها', countryCode: 'SA' },
-  { name: 'Taif', nameAr: 'الطائف', countryCode: 'SA' },
-  // UAE
-  { name: 'Dubai', nameAr: 'دبي', countryCode: 'AE' },
-  { name: 'Abu Dhabi', nameAr: 'أبو ظبي', countryCode: 'AE' },
-  { name: 'Sharjah', nameAr: 'الشارقة', countryCode: 'AE' },
-  // Kuwait
-  { name: 'Kuwait City', nameAr: 'مدينة الكويت', countryCode: 'KW' },
-  // Qatar
-  { name: 'Doha', nameAr: 'الدوحة', countryCode: 'QA' },
-  // Bahrain
-  { name: 'Manama', nameAr: 'المنامة', countryCode: 'BH' },
-  // Oman
-  { name: 'Muscat', nameAr: 'مسقط', countryCode: 'OM' },
-]
+// City type matching API response
+interface City {
+  id: string
+  name: string
+  nameAr: string | null
+  slug: string | null
+  countryCode: string | null
+  countryId: string
+}
 
 interface ProfileData {
   fullName: string
@@ -67,6 +53,8 @@ interface ProfileData {
   country: string
   city: string
   dateOfBirth: Date | undefined
+  birthMonth: string
+  birthDay: string
 }
 
 interface FieldErrors {
@@ -77,14 +65,27 @@ interface FieldErrors {
   city?: string | null
 }
 
-export default function CompleteProfile() {
+function CompleteProfileContent() {
   const t = useTranslations()
-  const { isRTL, locale } = useLocale()
+  const { isRTL, locale, setLocale } = useLocale()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  const handleLanguageToggle = () => {
+    const newLocale = locale === 'en' ? 'ar' : 'en'
+    setLocale(newLocale)
+  }
   
   const [isLoading, setIsLoading] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
+  const [countries, setCountries] = useState<Country[]>([])
+  const [isLoadingCountries, setIsLoadingCountries] = useState(true)
+  const [cities, setCities] = useState<City[]>([])
+  const [isLoadingCities, setIsLoadingCities] = useState(false)
+  
+  // Get username from query params (from landing page flow)
+  const usernameFromQuery = searchParams?.get('username') || null
   
   // Form states
   const [profile, setProfile] = useState<ProfileData>({
@@ -94,11 +95,151 @@ export default function CompleteProfile() {
     country: '',
     city: '',
     dateOfBirth: undefined,
+    birthMonth: '',
+    birthDay: '',
   })
+
+  // Month options (1-12)
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const monthIndex = i + 1
+    const date = new Date(2000, monthIndex - 1, 1)
+    return {
+      value: monthIndex.toString(),
+      label: date.toLocaleString(locale === 'ar' ? 'ar' : 'en', { month: 'long' }),
+    }
+  })
+
+  // Day options (1-31, will be filtered based on selected month)
+  const getDaysForMonth = (month: string): number[] => {
+    if (!month) return []
+    const monthNum = parseInt(month)
+    if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) return []
+    
+    // Get days in month (using a non-leap year for simplicity)
+    const daysInMonth = new Date(2000, monthNum, 0).getDate()
+    return Array.from({ length: daysInMonth }, (_, i) => i + 1)
+  }
+
+  // Update dateOfBirth when month or day changes
+  useEffect(() => {
+    if (profile.birthMonth && profile.birthDay) {
+      const monthNum = parseInt(profile.birthMonth)
+      const dayNum = parseInt(profile.birthDay)
+      if (!isNaN(monthNum) && !isNaN(dayNum) && monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+        // Use current year for validation purposes (but we don't store year)
+        const currentYear = new Date().getFullYear()
+        const newDate = new Date(currentYear, monthNum - 1, dayNum)
+        // Validate the date is valid (e.g., not Feb 30)
+        if (newDate.getMonth() === monthNum - 1 && newDate.getDate() === dayNum) {
+          setProfile(prev => ({ ...prev, dateOfBirth: newDate }))
+          // Validate if field has been touched
+          if (touched.dateOfBirth) {
+            const error = validateDateOfBirth(newDate)
+            setErrors(prev => ({ ...prev, dateOfBirth: error }))
+          }
+        } else {
+          // Invalid date (e.g., Feb 30)
+          setProfile(prev => ({ ...prev, dateOfBirth: undefined }))
+          if (touched.dateOfBirth) {
+            setErrors(prev => ({ ...prev, dateOfBirth: t('validation.dateOfBirthInvalid') }))
+          }
+        }
+      }
+    } else {
+      setProfile(prev => ({ ...prev, dateOfBirth: undefined }))
+      if (touched.dateOfBirth && (!profile.birthMonth || !profile.birthDay)) {
+        setErrors(prev => ({ ...prev, dateOfBirth: null }))
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.birthMonth, profile.birthDay])
   
   // Error states
   const [errors, setErrors] = useState<FieldErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+
+  // Fetch countries from API
+  useEffect(() => {
+    const fetchCountries = async () => {
+      try {
+        setIsLoadingCountries(true)
+        const response = await fetch('/api/countries')
+        if (!response.ok) {
+          throw new Error('Failed to fetch countries')
+        }
+        const data = await response.json()
+        
+        // Map API response to component format
+        const mappedCountries: Country[] = (data.countries || []).map((country: any) => ({
+          code: country.iso2,
+          name: country.name,
+          nameAr: country.name_ar || null,
+          phoneCode: country.phone_code || '',
+          flagUrl: country.flag_url || null,
+        }))
+        
+        setCountries(mappedCountries)
+      } catch (error) {
+        console.error('Error fetching countries:', error)
+        // Fallback to empty array on error
+        setCountries([])
+      } finally {
+        setIsLoadingCountries(false)
+      }
+    }
+    fetchCountries()
+  }, [])
+
+  // Fetch cities from API when country changes
+  useEffect(() => {
+    const fetchCities = async () => {
+      if (!profile.country) {
+        setCities([])
+        setProfile(prev => ({ ...prev, city: '' }))
+        return
+      }
+
+      try {
+        setIsLoadingCities(true)
+        const response = await fetch(`/api/cities?country=${profile.country}`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch cities')
+        }
+        const data = await response.json()
+        
+        // Map API response to component format
+        const mappedCities: City[] = (data.cities || []).map((city: any) => ({
+          id: city.id,
+          name: city.name,
+          nameAr: city.nameAr || null,
+          slug: city.slug || null,
+          countryCode: city.countryCode || null,
+          countryId: city.countryId,
+        }))
+        
+        setCities(mappedCities)
+        
+        // Clear city selection if current city doesn't belong to new country
+        // Use functional update to access current state
+        setProfile(prev => {
+          if (prev.city) {
+            const cityExists = mappedCities.some(c => c.name === prev.city)
+            if (!cityExists) {
+              return { ...prev, city: '' }
+            }
+          }
+          return prev
+        })
+      } catch (error) {
+        console.error('Error fetching cities:', error)
+        // Fallback to empty array on error
+        setCities([])
+      } finally {
+        setIsLoadingCities(false)
+      }
+    }
+    fetchCities()
+  }, [profile.country])
 
   // Check auth on mount
   useEffect(() => {
@@ -121,65 +262,37 @@ export default function CompleteProfile() {
         setUserId(user.id)
       
       // Check if user is an admin first - admins skip onboarding
-      // Check both admin_users table and if user exists in auth but not in public.users
-      const { data: adminData } = await supabase
-        .from('admin_users')
-        .select('id')
-        .eq('id', user.id)
-        .eq('is_active', true)
-        .single()
+      const { isAdmin, error: adminError } = await isAdminUser(user.id)
       
-      // Also check if user exists in auth but not in public.users (indicates admin account)
-      const { data: userCheckData, error: userCheckError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', user.id)
-        .single()
+      if (adminError) {
+        console.error('Error checking admin status:', adminError)
+      }
       
-      // If user is in admin_users table OR doesn't exist in public.users table, treat as admin
-      const isAdmin = adminData || (userCheckError && userCheckError.code === 'PGRST116') // PGRST116 = no rows returned
-      
-      // If user is an admin, redirect to home (skip onboarding)
+      // If user is an admin, redirect to landing (skip onboarding)
       if (isAdmin) {
-        router.push('/home')
+        router.push('/')
         return
       }
 
       // Check user's onboarding status and redirect to correct step
-      const { data: userData } = await supabase
-        .from('users')
-        .select('full_name, username, onboarding_step, is_onboarded')
-        .eq('id', user.id)
-        .single()
+      const { data: userDataWithFlags, error: userError } = await getUserWithPreferences(user.id)
       
-      // Check junction tables for completion flags
-      const { data: traitsData } = await supabase
-        .from('user_traits')
-        .select('trait_id')
-        .eq('user_id', user.id)
-      
-      const { data: brandsData } = await supabase
-        .from('user_brands')
-        .select('brand_id')
-        .eq('user_id', user.id)
-      
-      const { data: colorsData } = await supabase
-        .from('user_colors')
-        .select('color_id')
-        .eq('user_id', user.id)
-      
-      const userDataWithFlags = {
-        ...userData,
-        has_personality_traits: (traitsData?.length || 0) > 0,
-        has_favorite_brands: (brandsData?.length || 0) > 0,
-        has_favorite_colors: (colorsData?.length || 0) > 0,
+      if (userError) {
+        console.error('Error loading user:', userError)
+        router.push('/login')
+        return
       }
       
-      const nextStep = getNextOnboardingStep(userDataWithFlags || {})
+      const nextStep = getNextOnboardingStep((userDataWithFlags as Record<string, unknown>) || {})
       
       // If user has already completed this step, redirect to next step
       if (nextStep !== '/complete-profile') {
-        router.push(nextStep)
+        if (nextStep === PROFILE_REDIRECT) {
+          const username = (userDataWithFlags as Record<string, unknown>)?.username as string | null
+          router.push(username ? `/@${username}` : '/')
+        } else {
+          router.push(nextStep)
+        }
         return
       }
       
@@ -188,10 +301,25 @@ export default function CompleteProfile() {
         setProfile(prev => ({ ...prev, fullName: user.user_metadata.full_name }))
       }
       
+      // Pre-fill birth month and day if dateOfBirth exists
+      const userResult = await getUserWithPreferences(user.id)
+      if (userResult.ok && userResult.data?.date_of_birth) {
+        const dob = new Date(userResult.data.date_of_birth)
+        if (!isNaN(dob.getTime())) {
+          setProfile(prev => ({
+            ...prev,
+            birthMonth: (dob.getMonth() + 1).toString(),
+            birthDay: dob.getDate().toString(),
+            dateOfBirth: dob,
+          }))
+        }
+      }
+      
       setIsCheckingAuth(false)
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error checking auth:', error)
-        if (error?.message?.includes('session') || error?.message?.includes('JWT') || error?.message?.includes('Auth session missing')) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        if (errorMessage.includes('session') || errorMessage.includes('JWT') || errorMessage.includes('Auth session missing')) {
           router.push('/login')
           return
         }
@@ -219,24 +347,10 @@ export default function CompleteProfile() {
   }
 
   const validateDateOfBirth = (date: Date | undefined): string | null => {
+    // Since we only collect month/day (no year), we can't validate age
+    // Just validate that the date is valid (not Feb 30, etc.)
     if (!date) return null // Date of birth is optional
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const birthDate = new Date(date)
-    birthDate.setHours(0, 0, 0, 0)
-    
-    if (isNaN(birthDate.getTime())) return t('validation.dateOfBirthInvalid')
-    if (birthDate > today) return t('validation.dateOfBirthFuture')
-    
-    // Check minimum age (13 years)
-    const age = today.getFullYear() - birthDate.getFullYear()
-    const monthDiff = today.getMonth() - birthDate.getMonth()
-    const dayDiff = today.getDate() - birthDate.getDate()
-    const actualAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age
-    
-    if (actualAge < 13) return t('validation.dateOfBirthTooYoung')
-    if (actualAge > 120) return t('validation.dateOfBirthTooOld')
-    
+    if (isNaN(date.getTime())) return t('validation.dateOfBirthInvalid')
     return null
   }
 
@@ -280,6 +394,27 @@ export default function CompleteProfile() {
     return !Object.values(newErrors).some(error => error !== null)
   }
 
+  // Check if form can be submitted (required fields are valid)
+  const canSubmit = (): boolean => {
+    // Full name is required - must be filled and valid
+    if (!profile.fullName.trim() || validateFullName(profile.fullName) !== null) {
+      return false
+    }
+    // Phone is required - must be filled and valid
+    if (!profile.phone || !profile.phone.trim() || validatePhone(profile.phone) !== null) {
+      return false
+    }
+    // Date of birth (month and day) are required - both must be selected
+    if (!profile.birthMonth || !profile.birthDay) {
+      return false
+    }
+    // If dateOfBirth is set, it must be valid
+    if (profile.dateOfBirth && validateDateOfBirth(profile.dateOfBirth) !== null) {
+      return false
+    }
+    return true
+  }
+
   // Check if field is valid
   const isFieldValid = (field: keyof FieldErrors): boolean => {
     if (!touched[field]) return false
@@ -319,31 +454,69 @@ export default function CompleteProfile() {
     setIsLoading(true)
 
     try {
-      // Upsert user profile in database (create if doesn't exist, update if exists)
-      const { error } = await supabase
-        .from('users')
-        .upsert({
-          id: userId,
-          full_name: profile.fullName,
-          phone: profile.phone ? `${profile.phoneCountryCode}${profile.phone}` : null,
-          country: profile.country || null,
-          city: profile.city || null,
-          birthdate: profile.dateOfBirth ? profile.dateOfBirth.toISOString().split('T')[0] : null,
-          onboarding_step: ONBOARDING_STEPS.CLAIM_USERNAME, // Move to next step
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'id'
+      // Get current user data to check if username is already set
+      const { data: currentUserData } = await getUserById(userId)
+      
+      // If username is provided from query params and user doesn't already have one, try to claim it
+      let finalUsername: string | null = null
+      if (usernameFromQuery && !currentUserData?.username) {
+        const normalizedUsername = usernameFromQuery.trim().toLowerCase()
+        
+        // Check username availability via API
+        const availabilityResponse = await fetch(`/api/users/claim-username`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: normalizedUsername }),
         })
+        
+        const availabilityData = await availabilityResponse.json()
+        
+        if (availabilityData.ok && availabilityData.data?.username) {
+          finalUsername = availabilityData.data.username
+        } else {
+          // Username not available, continue without it (user can set it later)
+          console.warn('Username not available:', availabilityData.error?.message)
+        }
+      } else if (currentUserData?.username) {
+        // User already has a username, use it
+        finalUsername = currentUserData.username
+      }
 
-      if (error) throw error
+      // Create date with default year (2000) for storage since we only collect month/day
+      let birthdateToSave: string | null = null
+      if (profile.birthMonth && profile.birthDay) {
+        const monthNum = parseInt(profile.birthMonth)
+        const dayNum = parseInt(profile.birthDay)
+        if (!isNaN(monthNum) && !isNaN(dayNum)) {
+          // Use year 2000 as default since we don't collect year
+          const dateToSave = new Date(2000, monthNum - 1, dayNum)
+          if (dateToSave.getMonth() === monthNum - 1 && dateToSave.getDate() === dayNum) {
+            birthdateToSave = dateToSave.toISOString().split('T')[0]
+          }
+        }
+      }
+
+      // Upsert user profile in database (create if doesn't exist, update if exists)
+      const { error: upsertError } = await upsertUser(userId, {
+        full_name: profile.fullName,
+        username: finalUsername,
+        phone: profile.phone ? `${profile.phoneCountryCode}${profile.phone}` : null,
+        country: profile.country || null,
+        city: profile.city || null,
+        birthdate: birthdateToSave,
+        onboarding_step: ONBOARDING_STEPS.PERSONALITY_TRAITS, // Always go to personality-traits (skip claim-username)
+      })
+
+      if (upsertError) throw new Error(upsertError.message)
 
       toast.success(t('toast.profileUpdated'))
       
-      // Redirect to claim username step
-      router.push('/claim-username')
-    } catch (error: any) {
+      // Redirect to personality-traits (skip claim-username step)
+      router.push(ONBOARDING_PATHS[ONBOARDING_STEPS.PERSONALITY_TRAITS])
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred'
       toast.error(t('toast.errorOccurred'), {
-        description: error.message,
+        description: errorMessage,
       })
     } finally {
       setIsLoading(false)
@@ -355,466 +528,517 @@ export default function CompleteProfile() {
     
     setIsLoading(true)
     try {
-      // Upsert user profile with minimal data when skipping, but move to next step
-      await supabase
-        .from('users')
-        .upsert({
-          id: userId,
-          onboarding_step: ONBOARDING_STEPS.CLAIM_USERNAME, // Move to step 2 even when skipping
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'id'
-        })
+      // Get current user data to check if username is already set
+      const { data: currentUserData } = await getUserById(userId)
       
-      router.push('/claim-username')
+      // If username is provided from query params and user doesn't already have one, try to save it even when skipping
+      let finalUsername: string | null = null
+      if (usernameFromQuery && !currentUserData?.username) {
+        const normalizedUsername = usernameFromQuery.trim().toLowerCase()
+        
+        try {
+          const availabilityResponse = await fetch(`/api/users/claim-username`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: normalizedUsername }),
+          })
+          
+          const availabilityData = await availabilityResponse.json()
+          
+          if (availabilityData.ok && availabilityData.data?.username) {
+            finalUsername = availabilityData.data.username
+          }
+        } catch (error) {
+          // Ignore errors when skipping
+          console.warn('Could not save username when skipping:', error)
+        }
+      } else if (currentUserData?.username) {
+        // User already has a username, use it
+        finalUsername = currentUserData.username
+      }
+
+      // Upsert user profile with minimal data when skipping
+      const { error: upsertError } = await upsertUser(userId, {
+        username: finalUsername,
+        onboarding_step: ONBOARDING_STEPS.PERSONALITY_TRAITS, // Always go to personality-traits (skip claim-username)
+      })
+
+      if (upsertError) {
+        console.error('Error updating user:', upsertError)
+      }
+      
+      // Redirect to personality-traits (skip claim-username step)
+      router.push(ONBOARDING_PATHS[ONBOARDING_STEPS.PERSONALITY_TRAITS])
     } catch (error) {
-      router.push('/claim-username')
+      // Fallback redirect to personality-traits
+      router.push(ONBOARDING_PATHS[ONBOARDING_STEPS.PERSONALITY_TRAITS])
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  // Helper to get input className based on error/success state
+  // Helper to get input className based on error/success state (matching EmailInput style)
   const getInputClassName = (field: keyof FieldErrors) => {
     const hasError = touched[field] && errors[field]
     const isValid = isFieldValid(field)
     const textAlign = isRTL ? 'text-right' : 'text-left'
-    const baseClasses = `h-12 bg-white rounded-xl text-gray-900 placeholder:text-gray-400 transition-colors ${textAlign}`
+    // Match EmailInput: h-[55px], bg-gray-50 focus:bg-gray-100, !text-[18px], pl-4, rounded-xl
+    const baseClasses = `h-[55px] bg-gray-50 focus:bg-gray-100 rounded-xl placeholder:text-gray-400 transition-colors w-full min-w-0 pl-4 !text-[18px] md:!text-[18px] font-medium outline-none text-gray-700 ${textAlign}`
     
+    // EmailInput doesn't use borders, but we keep minimal border for error states only
     let borderClasses: string
     if (hasError) {
-      borderClasses = 'border-red-500 hover:border-red-600 focus:border-red-500 focus-visible:border-red-500 focus:ring-red-500/20 focus-visible:ring-red-500/50 focus-visible:ring-[3px]'
-    } else if (isValid) {
-      borderClasses = 'border-green-500 hover:border-green-600 focus:border-green-500 focus-visible:border-green-500 focus:ring-green-500/20 focus-visible:ring-green-500/50 focus-visible:ring-[3px]'
+      borderClasses = 'border border-red-500 focus:border-red-500'
     } else {
-      borderClasses = 'border-gray-200 hover:border-orange-400 hover:border-2 focus:border-orange-500 focus-visible:border-orange-500 focus:ring-orange-500/20 focus-visible:ring-orange-500/50 focus-visible:ring-[3px]'
+      borderClasses = 'border-0'
     }
     
     return `${baseClasses} ${borderClasses}`
   }
+  
+  // Helper to get select className (matching EmailInput style)
+  const getSelectClassName = () => {
+    return `h-[55px] bg-gray-50 focus:bg-gray-100 rounded-xl transition-colors w-full min-w-0 pl-4 pr-10 !text-[18px] md:!text-[18px] font-medium outline-none text-gray-700 border-0 !shadow-none`
+  }
 
-  // Error message component
+  // Error message component (matching EmailInput style)
   const ErrorMessage = ({ message }: { message: string | null | undefined }) => {
     if (!message) return null
     return (
-      <div className="mt-1.5 text-red-500 text-xs font-medium">
-        <span>{message}</span>
-      </div>
+      <p className="text-xs text-red-500 pl-4" role="alert">
+        {message}
+      </p>
     )
   }
 
-  // Success message component
+  // Success message component (matching EmailInput style)
   const SuccessMessage = ({ message }: { message: string }) => {
     return (
-      <div className="mt-1.5 text-green-500 text-xs font-medium">
-        <span>{message}</span>
+      <p className="text-xs text-green-500 pl-4">
+        {message}
+      </p>
+    )
+  }
+
+  // Field validation feedback component (matching EmailInput style)
+  const FieldFeedback = ({ field, successMessage }: { field: keyof FieldErrors; successMessage: string }) => {
+    return (
+      <div className="px-0 pt-1 flex flex-col items-start justify-center gap-1 min-h-[20px]">
+        {touched[field] && errors[field] ? (
+          <ErrorMessage message={errors[field]} />
+        ) : isFieldValid(field) ? (
+          <SuccessMessage message={successMessage} />
+        ) : null}
       </div>
     )
   }
 
-  // Field validation feedback component
-  const FieldFeedback = ({ field, successMessage }: { field: keyof FieldErrors; successMessage: string }) => {
-    if (touched[field] && errors[field]) {
-      return <ErrorMessage message={errors[field]} />
-    }
-    if (isFieldValid(field)) {
-      return <SuccessMessage message={successMessage} />
-    }
-    return null
-  }
-
-  // Loading state
+  // Loading state with skeleton
   if (isCheckingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-100 via-orange-200 to-orange-400">
-        <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+      <div className="min-h-screen bg-white">
+        <header className="w-full">
+          <div className="container mx-auto px-6 py-4">
+            <div className="flex items-center justify-between">
+              <Skeleton className="w-12 h-12 rounded-lg" />
+              <Skeleton className="h-10 w-24 rounded-full" />
+            </div>
+          </div>
+        </header>
+        <main className="min-h-[calc(100vh-80px)] flex items-center justify-center py-8">
+          <div className="w-full max-w-md px-6">
+            <div className="space-y-6">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-5 w-64" />
+              <Skeleton className="h-12 w-full rounded-xl" />
+              <Skeleton className="h-12 w-full rounded-xl" />
+              <Skeleton className="h-12 w-full rounded-xl" />
+            </div>
+          </div>
+        </main>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Gradient Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-amber-100 via-orange-200 via-50% to-orange-400" />
-      <div className="absolute inset-0 bg-gradient-to-tr from-rose-200/40 via-transparent to-purple-200/30" />
-      
-      {/* Logo */}
-      <div className={`absolute top-6 ${isRTL ? 'right-6' : 'left-6'} z-20`}>
-        <img src={HAADY_LOGO_URL} alt="Haady" className="w-14 h-14 cursor-pointer" />
-      </div>
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <header className="w-full">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center">
+              <img
+                src={HAADY_LOGO_URL}
+                alt="Haady"
+                className="w-12 h-12 cursor-pointer"
+                onClick={() => router.push('/')}
+              />
+            </div>
 
-      {/* Language Switcher */}
-      <div className={`absolute top-6 ${isRTL ? 'left-6' : 'right-6'} z-20`}>
-        <LanguageSwitcher />
-      </div>
-
-      {/* Centered Card */}
-      <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="bg-white rounded-4xl shadow-2xl shadow-gray-900/10 p-8 sm:p-10"
-          >
-            {/* Header */}
-            <motion.h1
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className={`text-2xl sm:text-3xl font-bold text-gray-900 mb-2 ${isRTL ? 'text-right' : 'text-left'}`}
-            >
-              {t('auth.completeProfile')}
-            </motion.h1>
-            
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-              className={`text-gray-400 mb-8 ${isRTL ? 'text-right' : 'text-left'}`}
-            >
-              {t('auth.almostThere')}
-            </motion.p>
-
-            {/* Profile Form */}
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-              {/* Full Name - Required */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.2 }}
-                className="space-y-2"
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleLanguageToggle}
+                size="lg"
+                variant="outline"
+                className="rounded-full bg-white hover:bg-gray-50 border-gray-200 shadow-sm hover:shadow-md w-12 h-12 p-0"
+                title={locale === 'en' ? 'Switch to Arabic' : 'التبديل إلى الإنجليزية'}
+                aria-label={locale === 'en' ? 'Switch to Arabic' : 'التبديل إلى الإنجليزية'}
               >
-                <Label htmlFor="fullName" className={`text-gray-700 font-medium block ${isRTL ? 'text-right' : 'text-left'}`}>
-                  {t('auth.fullName')} <span className="text-rose-500">*</span>
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="fullName"
-                    type="text"
-                    placeholder={t('auth.fullNamePlaceholder')}
-                    value={profile.fullName}
-                    onChange={(e) => {
-                      setProfile(prev => ({ ...prev, fullName: e.target.value }))
-                      if (touched.fullName) validateField('fullName')
-                    }}
-                    onBlur={() => handleBlur('fullName')}
-                    className={`${getInputClassName('fullName')} ${isFieldValid('fullName') ? (isRTL ? 'ps-10' : 'pe-10') : ''}`}
-                  />
-                  {isFieldValid('fullName') && (
-                    <CheckCircle2 className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 w-5 h-5 text-green-500`} />
-                  )}
-                </div>
-                <FieldFeedback field="fullName" successMessage={t('validation.fullNameValid')} />
-              </motion.div>
+                <Globe className="w-5 h-5 text-gray-700" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
 
-              {/* Phone - Optional */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.25 }}
-                className="space-y-2"
-              >
-                <Label htmlFor="phone" className={`text-gray-700 font-medium block ${isRTL ? 'text-right' : 'text-left'}`}>
-                  {t('auth.phone')}
-                </Label>
-                <div className="flex items-center gap-2">
-                  {/* Country Code Selector */}
-                  <Select
-                    value={profile.phoneCountryCode}
-                    onValueChange={(value) => {
-                      // Find the country by phone code
-                      const selectedCountry = gulfCountries.find(c => c.phoneCode === value)
-                      if (selectedCountry) {
-                        setProfile(prev => {
-                          // Get cities for the new country
-                          const countryCities = cities.filter(c => c.countryCode === selectedCountry.code)
-                          const currentCity = prev.city
-                          // Clear city if it doesn't belong to the new country
-                          const newCity = countryCities.some(c => c.name === currentCity) ? currentCity : ''
-                          
-                          return {
-                            ...prev,
-                            phoneCountryCode: value,
-                            country: selectedCountry.code,
-                            city: newCity
-                          }
-                        })
-                      } else {
-                        setProfile(prev => ({ ...prev, phoneCountryCode: value }))
-                      }
-                    }}
-                  >
-                    <SelectTrigger className={`h-12 w-[140px] bg-white border border-gray-200 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent ${isRTL ? 'flex-row-reverse' : ''}`}>
-                      <SelectValue>
-                        {profile.phoneCountryCode && (() => {
-                          const selectedCountry = gulfCountries.find(c => c.phoneCode === profile.phoneCountryCode)
-                          if (!selectedCountry) return profile.phoneCountryCode
-                          return (
-                            <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
-                              <Flag
-                                code={selectedCountry.code}
-                                size="s"
-                                hasBorder={false}
-                                hasDropShadow={false}
-                              />
-                              <span className="text-sm">{selectedCountry.phoneCode}</span>
-                            </div>
-                          )
-                        })()}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className={isRTL ? 'text-right' : 'text-left'}>
-                      {gulfCountries.map((country) => (
-                        <SelectItem 
-                          key={country.code} 
-                          value={country.phoneCode}
-                        >
-                          <div className={`flex items-center gap-2 w-full ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
-                            <Flag
-                              code={country.code}
-                              size="s"
-                              hasBorder={false}
-                              hasDropShadow={false}
-                            />
-                            <span>{country.phoneCode}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  
-                  {/* Phone Number Input */}
-                  <div className="relative flex-1">
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder={t('auth.phonePlaceholder')}
-                      value={profile.phone}
-                      onChange={(e) => {
-                        setProfile(prev => ({ ...prev, phone: e.target.value }))
-                        if (touched.phone) validateField('phone')
-                      }}
-                      onBlur={() => handleBlur('phone')}
-                      className={`${getInputClassName('phone')} ${isFieldValid('phone') ? (isRTL ? 'ps-10' : 'pe-10') : ''} ${isRTL ? 'text-right placeholder:text-right' : 'text-left placeholder:text-left'}`}
-                      dir="ltr"
-                    />
-                    {isFieldValid('phone') && (
-                      <CheckCircle2 className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 w-5 h-5 text-green-500`} />
-                    )}
-                  </div>
-                </div>
-                <FieldFeedback field="phone" successMessage={t('validation.phoneValid')} />
-              </motion.div>
+      {/* Main Content */}
+      <main className="min-h-[calc(100vh-80px)] flex items-center justify-center py-8">
+        <div className="w-full max-w-md px-6">
 
-              {/* Country - Optional */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.3 }}
-                className="space-y-2"
-              >
-                <Label className={`text-gray-700 font-medium block ${isRTL ? 'text-right' : 'text-left'}`}>{t('auth.country')}</Label>
-                <Select
-                  value={profile.country}
-                  onValueChange={(value) => {
-                    setProfile(prev => {
-                      // Get cities for the new country
-                      const countryCities = cities.filter(c => c.countryCode === value)
-                      const currentCity = prev.city
-                      // Clear city if it doesn't belong to the new country
-                      const newCity = countryCities.some(c => c.name === currentCity) ? currentCity : ''
-                      
-                      // Also update phone country code if country matches
-                      const selectedCountry = gulfCountries.find(c => c.code === value)
-                      const newPhoneCountryCode = selectedCountry ? selectedCountry.phoneCode : prev.phoneCountryCode
-                      
-                      return {
-                        ...prev,
-                        country: value,
-                        city: newCity,
-                        phoneCountryCode: newPhoneCountryCode
-                      }
-                    })
+          {/* Header */}
+          <h1 className={`text-2xl sm:text-3xl font-bold text-gray-900 mb-2 ${isRTL ? 'text-right' : 'text-left'}`}>
+            {t('auth.completeProfile')}
+          </h1>
+          
+          <p className={`text-gray-500 mb-8 ${isRTL ? 'text-right' : 'text-left'}`}>
+            {t('auth.almostThere')}
+          </p>
+
+          {/* Profile Form */}
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            {/* Full Name - Required */}
+            <div className="space-y-2">
+              <Label htmlFor="fullName" className={`text-gray-700 font-medium block ${isRTL ? 'text-right' : 'text-left'}`}>
+                {t('auth.fullName')} <span className="text-primary">*</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  id="fullName"
+                  type="text"
+                  placeholder={t('auth.fullNamePlaceholder')}
+                  value={profile.fullName}
+                  data-testid="profile-fullname-input"
+                  onChange={(e) => {
+                    setProfile(prev => ({ ...prev, fullName: e.target.value }))
+                    if (touched.fullName) validateField('fullName')
                   }}
-                >
-                  <SelectTrigger className={`h-12 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent ${isRTL ? 'flex-row-reverse' : ''}`}>
-                    <SelectValue placeholder={t('auth.selectCountry')}>
-                      {profile.country && (() => {
-                        const selectedCountry = gulfCountries.find(c => c.code === profile.country)
-                        if (!selectedCountry) return null
-                        return (
-                          <div className={`flex items-center gap-2 w-full ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
-                            {isRTL ? (
-                              <>
-                                <span>{selectedCountry.nameAr}</span>
-                                <Flag
-                                  code={selectedCountry.code}
-                                  size="s"
-                                  hasBorder={false}
-                                  hasDropShadow={false}
-                                />
-                              </>
-                            ) : (
-                              <>
-                                <Flag
-                                  code={selectedCountry.code}
-                                  size="s"
-                                  hasBorder={false}
-                                  hasDropShadow={false}
-                                />
-                                <span>{selectedCountry.name}</span>
-                              </>
-                            )}
-                          </div>
-                        )
-                      })()}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className={isRTL ? 'text-right' : 'text-left'}>
-                    {gulfCountries.map((country) => (
+                  onBlur={() => handleBlur('fullName')}
+                  className={`${getInputClassName('fullName')} ${isFieldValid('fullName') ? (isRTL ? 'pl-10' : 'pr-10') : ''}`}
+                />
+                {isFieldValid('fullName') && (
+                  <CheckCircle2 className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 w-5 h-5 fill-green-500 stroke-green-500 [&>path:last-child]:stroke-white [&>path:last-child]:stroke-2`} />
+                )}
+              </div>
+            <FieldFeedback field="fullName" successMessage={t('validation.fullNameValid')} />
+          </div>
+
+          {/* Phone - Optional */}
+          <div className="space-y-2">
+            <Label htmlFor="phone" className={`text-gray-700 font-medium block ${isRTL ? 'text-right' : 'text-left'}`}>
+              {t('auth.phone')}
+            </Label>
+            <div className="flex items-center gap-2">
+              {/* Country Code Selector */}
+              <Select
+                value={profile.phoneCountryCode}
+                onValueChange={(value) => {
+                  // Find the country by phone code
+                  const selectedCountry = countries.find(c => c.phoneCode === value)
+                  if (selectedCountry) {
+                    setProfile(prev => ({
+                      ...prev,
+                      phoneCountryCode: value,
+                      country: selectedCountry.code,
+                      // City will be cleared automatically by the cities useEffect if it doesn't belong to new country
+                    }))
+                  } else {
+                    setProfile(prev => ({ ...prev, phoneCountryCode: value }))
+                  }
+                }}
+              >
+                <SelectTrigger className={`!h-[55px] w-[140px] bg-gray-50 focus:bg-gray-100 rounded-xl border-0 !text-[18px] md:!text-[18px] font-medium outline-none text-gray-700 transition-colors px-4 py-0 !shadow-none ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <SelectValue>
+                    {profile.phoneCountryCode && (() => {
+                      const selectedCountry = countries.find(c => c.phoneCode === profile.phoneCountryCode)
+                      if (!selectedCountry) return profile.phoneCountryCode
+                      return (
+                        <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
+                          {selectedCountry.flagUrl ? (
+                            <Image
+                              src={selectedCountry.flagUrl}
+                              alt={selectedCountry.name}
+                              width={16}
+                              height={16}
+                              className="rounded"
+                              style={{ objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div className="w-4 h-4 bg-gray-200 rounded" />
+                          )}
+                          <span className="!text-[18px] md:!text-[18px] font-medium">{selectedCountry.phoneCode}</span>
+                        </div>
+                      )
+                    })()}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className={isRTL ? 'text-right' : 'text-left'}>
+                  {isLoadingCountries ? (
+                    <SelectItem value="loading" disabled>Loading...</SelectItem>
+                  ) : countries.length === 0 ? (
+                    <SelectItem value="no-countries" disabled>No countries available</SelectItem>
+                  ) : (
+                    countries.map((country) => (
                       <SelectItem 
                         key={country.code} 
-                        value={country.code}
+                        value={country.phoneCode}
                       >
                         <div className={`flex items-center gap-2 w-full ${isRTL ? 'flex-row-reverse justify-end' : ''}`}>
-                          {isRTL ? (
-                            <>
-                              <span>{country.nameAr}</span>
-                              <Flag
-                                code={country.code}
-                                size="s"
-                                hasBorder={false}
-                                hasDropShadow={false}
-                              />
-                            </>
+                          {country.flagUrl ? (
+                            <Image
+                              src={country.flagUrl}
+                              alt={country.name}
+                              width={16}
+                              height={16}
+                              className="rounded"
+                              style={{ objectFit: 'cover' }}
+                            />
                           ) : (
-                            <>
-                              <Flag
-                                code={country.code}
-                                size="s"
-                                hasBorder={false}
-                                hasDropShadow={false}
-                              />
-                              <span>{country.name}</span>
-                            </>
+                            <div className="w-4 h-4 bg-gray-200 rounded" />
                           )}
+                          <span className="!text-[18px] md:!text-[18px] font-medium">{country.phoneCode}</span>
                         </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              
+              {/* Phone Number Input */}
+              <div className="relative flex-1">
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder={t('auth.phonePlaceholder')}
+                  value={profile.phone}
+                  data-testid="profile-phone-input"
+                  onChange={(e) => {
+                    setProfile(prev => ({ ...prev, phone: e.target.value }))
+                    if (touched.phone) validateField('phone')
+                  }}
+                  onBlur={() => handleBlur('phone')}
+                  className={`${getInputClassName('phone')} ${isFieldValid('phone') ? (isRTL ? 'pl-10' : 'pr-10') : ''} ${isRTL ? 'text-right placeholder:text-right' : 'text-left placeholder:text-left'}`}
+                  dir="ltr"
+                />
+                {isFieldValid('phone') && (
+                  <CheckCircle2 className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 w-5 h-5 fill-green-500 stroke-green-500 [&>path:last-child]:stroke-white [&>path:last-child]:stroke-2`} />
+                )}
+              </div>
+            </div>
+            <FieldFeedback field="phone" successMessage={t('validation.phoneValid')} />
+          </div>
+
+
+          {/* Date of Birth - Optional */}
+          <div className="space-y-2">
+            <div className={`flex items-center gap-2 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <div className="flex-[2] space-y-2">
+                <Label className={`text-gray-700 font-medium block ${isRTL ? 'text-right' : 'text-left'}`}>
+                  {t('auth.month') || 'Month'}
+                </Label>
+                <Select
+                  value={profile.birthMonth}
+                  onValueChange={(value) => {
+                    setProfile(prev => {
+                      // Clear day if it's invalid for the new month
+                      let newBirthDay = prev.birthDay
+                      if (prev.birthDay) {
+                        const days = getDaysForMonth(value)
+                        if (!days.includes(parseInt(prev.birthDay))) {
+                          newBirthDay = ''
+                        }
+                      }
+                      return { ...prev, birthMonth: value, birthDay: newBirthDay }
+                    })
+                    setTouched(prev => ({ ...prev, dateOfBirth: true }))
+                  }}
+                >
+                  <SelectTrigger className={`${getSelectClassName()} ${isRTL ? 'flex-row-reverse' : ''}`}>
+                    <SelectValue placeholder={t('auth.month') || 'Month'} />
+                  </SelectTrigger>
+                  <SelectContent className={isRTL ? 'text-right' : 'text-left'}>
+                    {months.map((month) => (
+                      <SelectItem key={month.value} value={month.value}>
+                        {month.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </motion.div>
-
-              {/* City - Optional */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.35 }}
-                className="space-y-2"
-              >
+              </div>
+              <div className="flex-1 space-y-2">
                 <Label className={`text-gray-700 font-medium block ${isRTL ? 'text-right' : 'text-left'}`}>
-                  {t('auth.city')}
+                  {t('auth.day') || 'Day'}
                 </Label>
                 <Select
-                  value={profile.city}
-                  onValueChange={(value) => setProfile(prev => ({ ...prev, city: value }))}
-                  disabled={!profile.country}
+                  value={profile.birthDay}
+                  onValueChange={(value) => {
+                    setProfile(prev => ({ ...prev, birthDay: value }))
+                    setTouched(prev => ({ ...prev, dateOfBirth: true }))
+                  }}
+                  disabled={!profile.birthMonth}
                 >
-                  <SelectTrigger className={`h-12 bg-white border-gray-200 rounded-xl hover:border-orange-400 focus:border-orange-500 focus-visible:border-orange-500 focus:ring-orange-500/20 focus-visible:ring-orange-500/50 focus-visible:ring-[3px] ${isRTL ? 'flex-row-reverse' : ''} ${!profile.country ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    <SelectValue placeholder={profile.country ? t('auth.cityPlaceholder') : t('auth.selectCountryFirst')} />
+                  <SelectTrigger className={`${getSelectClassName()} ${isRTL ? 'flex-row-reverse' : ''} ${!profile.birthMonth ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <SelectValue placeholder={t('auth.day') || 'Day'} />
                   </SelectTrigger>
                   <SelectContent className={isRTL ? 'text-right' : 'text-left'}>
-                    {profile.country
-                      ? cities
-                          .filter(city => city.countryCode === profile.country)
-                          .map((city) => (
-                            <SelectItem key={city.name} value={city.name}>
-                              {locale === 'ar' ? city.nameAr : city.name}
-                            </SelectItem>
-                          ))
-                      : cities.map((city) => (
-                          <SelectItem key={city.name} value={city.name}>
-                            {locale === 'ar' ? city.nameAr : city.name}
-                          </SelectItem>
-                        ))}
+                    {profile.birthMonth ? (
+                      getDaysForMonth(profile.birthMonth).map((day) => (
+                        <SelectItem key={day} value={day.toString()}>
+                          {day}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="select-month-first" disabled>
+                        {t('auth.selectMonthFirst') || 'Select month first'}
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
-              </motion.div>
-
-              {/* Date of Birth - Optional */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.4 }}
-                className="space-y-2"
-              >
-                <Label className={`text-gray-700 font-medium block ${isRTL ? 'text-right' : 'text-left'}`}>{t('auth.dateOfBirth')}</Label>
-                <div className="relative">
-                  <DatePicker
-                    date={profile.dateOfBirth}
-                    onDateChange={(date) => {
-                      setProfile(prev => ({ ...prev, dateOfBirth: date }))
-                      setTouched(prev => ({ ...prev, dateOfBirth: true }))
-                      validateField('dateOfBirth')
-                    }}
-                    placeholder={t('auth.dateOfBirthPlaceholder')}
-                    className={cn(
-                      touched.dateOfBirth && errors.dateOfBirth
-                        ? 'border-red-500 hover:border-red-600 focus:border-red-500 focus-visible:border-red-500'
-                        : touched.dateOfBirth && isFieldValid('dateOfBirth')
-                        ? 'border-green-500 hover:border-green-600 focus:border-green-500 focus-visible:border-green-500'
-                        : ''
-                    )}
-                  />
-                  {touched.dateOfBirth && isFieldValid('dateOfBirth') && (
-                    <CheckCircle2 className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 w-5 h-5 text-green-500 pointer-events-none`} />
-                  )}
-                </div>
-                <FieldFeedback field="dateOfBirth" successMessage={t('validation.dateOfBirthValid')} />
-              </motion.div>
-
-              {/* Submit Button */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.5 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl transition-all duration-200 cursor-pointer"
-                >
-                  {isLoading ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>{t('auth.settingUp')}</span>
+              </div>
+            </div>
+            {profile.birthMonth && profile.birthDay ? (
+              (() => {
+                const monthNum = parseInt(profile.birthMonth)
+                const dayNum = parseInt(profile.birthDay)
+                if (!isNaN(monthNum) && !isNaN(dayNum)) {
+                  const today = new Date()
+                  const currentYear = today.getFullYear()
+                  let nextBirthday = new Date(currentYear, monthNum - 1, dayNum)
+                  
+                  // If birthday has passed this year, set it to next year
+                  if (nextBirthday < today) {
+                    nextBirthday = new Date(currentYear + 1, monthNum - 1, dayNum)
+                  }
+                  
+                  // Calculate months and days accurately
+                  let monthsUntil = 0
+                  let daysUntil = 0
+                  
+                  // Start from today and count months
+                  const tempDate = new Date(today)
+                  
+                  // Calculate months by adding months until we reach or pass the birthday
+                  while (tempDate < nextBirthday) {
+                    const nextMonthDate = new Date(tempDate.getFullYear(), tempDate.getMonth() + 1, tempDate.getDate())
+                    
+                    // If adding a month would go past the birthday, stop
+                    if (nextMonthDate > nextBirthday) {
+                      break
+                    }
+                    
+                    monthsUntil++
+                    tempDate.setMonth(tempDate.getMonth() + 1)
+                  }
+                  
+                  // Calculate remaining days from the last month date to the birthday
+                  daysUntil = Math.ceil((nextBirthday.getTime() - tempDate.getTime()) / (1000 * 60 * 60 * 24))
+                  
+                  // Ensure daysUntil is not negative
+                  if (daysUntil < 0) {
+                    daysUntil = 0
+                  }
+                  
+                  let countdownLine1Text = ''
+                  let countdownLine1Emoji = '🎂'
+                  let countdownLine2Text = ''
+                  let countdownLine2Emoji = '🎁'
+                  
+                  if (locale === 'ar') {
+                    if (monthsUntil > 0 && daysUntil > 0) {
+                      countdownLine1Text = `${monthsUntil} ${monthsUntil === 1 ? 'شهر' : 'أشهر'}، ${daysUntil} ${daysUntil === 1 ? 'يوم' : 'أيام'} حتى عيد ميلادك`
+                    } else if (daysUntil > 0) {
+                      countdownLine1Text = `${daysUntil} ${daysUntil === 1 ? 'يوم' : 'أيام'} حتى عيد ميلادك`
+                    } else {
+                      countdownLine1Text = `عيد ميلادك اليوم!`
+                    }
+                    countdownLine2Text = t('auth.birthdayCountdownHelper') || 'أكمل إعداد ملفك الشخصي حتى يتمكن الأصدقاء من إرسال الهدايا لك — لا حاجة للعنوان'
+                  } else {
+                    if (monthsUntil > 0 && daysUntil > 0) {
+                      countdownLine1Text = `${monthsUntil} ${monthsUntil === 1 ? 'month' : 'months'}, ${daysUntil} ${daysUntil === 1 ? 'day' : 'days'} until your birthday`
+                    } else if (daysUntil > 0) {
+                      countdownLine1Text = `${daysUntil} ${daysUntil === 1 ? 'day' : 'days'} until your birthday`
+                    } else {
+                      countdownLine1Text = `Your birthday is today!`
+                    }
+                    countdownLine2Text = t('auth.birthdayCountdownHelper') || 'Finish setting up your profile so friends can send you gifts — no address needed'
+                  }
+                  
+                  return (
+                    <div className={`space-y-1 ${isRTL ? 'text-right' : 'text-left'} pl-0`}>
+                      <p className="text-sm text-gray-700 font-bold">
+                        <span className="text-lg">{countdownLine1Emoji}</span> {countdownLine1Text}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {countdownLine2Text} <span className="text-base">{countdownLine2Emoji}</span>
+                      </p>
                     </div>
-                  ) : (
-                    <span>{t('auth.finishSetup')}</span>
-                  )}
-                </Button>
-              </motion.div>
+                  )
+                }
+                return null
+              })()
+            ) : (
+              <p className={`text-xs text-gray-500 ${isRTL ? 'text-right' : 'text-left'} pl-0`}>
+                🎂 {t('auth.birthdayHelper') || 'Add your birthday. Help friends celebrate you!'}
+              </p>
+            )}
+            {touched.dateOfBirth && errors.dateOfBirth && (
+              <p className={`text-xs text-red-500 pl-4 ${isRTL ? 'text-right pr-4' : 'text-left'}`}>
+                {errors.dateOfBirth}
+              </p>
+            )}
+            {touched.dateOfBirth && isFieldValid('dateOfBirth') && (
+              <p className={`text-xs text-green-500 pl-4 ${isRTL ? 'text-right pr-4' : 'text-left'}`}>
+                {t('validation.dateOfBirthValid')}
+              </p>
+            )}
+          </div>
 
-              {/* Skip Button */}
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3, delay: 0.6 }}
-                type="button"
-                onClick={handleSkip}
-                disabled={isLoading}
-                className="w-full text-center text-sm text-gray-500 hover:text-gray-700 cursor-pointer py-2"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {t('auth.skip')}
-              </motion.button>
-            </form>
-          </motion.div>
+          {/* Submit Button */}
+          <div className="mt-8">
+            <Button
+              type="submit"
+              disabled={isLoading || !canSubmit()}
+              className="w-full"
+              size="lg"
+              data-testid="complete-profile-submit-btn"
+            >
+            {isLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>{t('auth.settingUp')}</span>
+              </>
+            ) : (
+              <span>{t('landing.createAccount') || 'Create Account'}</span>
+            )}
+          </Button>
+          </div>
+
+        </form>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
 
+export default function CompleteProfile() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-secondary/80 to-primary/20">
+        <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+      </div>
+    }>
+      <CompleteProfileContent />
+    </Suspense>
+  )
+}

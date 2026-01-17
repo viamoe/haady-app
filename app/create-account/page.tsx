@@ -9,7 +9,7 @@ import { Button, EmailInput } from '@haady/ui'
 import { isAdminUser, getUserWithPreferences } from '@/lib/db/client-repos'
 import { toast } from '@/lib/toast'
 import { getNextOnboardingStep } from '@/lib/onboarding'
-import { ArrowLeft, ArrowRight, Mail, Phone, Check, Globe } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Mail, Check, Globe } from 'lucide-react'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { useLocale } from '@/i18n/context'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 const HAADY_LOGO_URL = 'https://rovphhvuuxwbhgnsifto.supabase.co/storage/v1/object/public/assets/haady-icon.svg'
 
-type AuthStep = 'email' | 'verify-email'
+type AuthStep = 'email'
 
 function CreateAccountContent() {
   const t = useTranslations()
@@ -32,7 +32,6 @@ function CreateAccountContent() {
   
   const [step, setStep] = useState<AuthStep>('email')
   const [isLoading, setIsLoading] = useState(false)
-  const [isResending, setIsResending] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   
   // Get username from query params (from landing page)
@@ -77,7 +76,7 @@ function CreateAccountContent() {
           }
           
           if (isAdmin) {
-            router.push('/home')
+            router.push('/')
             return
           }
 
@@ -91,11 +90,16 @@ function CreateAccountContent() {
             const errorCode = (userError as any)?.code || 'UNKNOWN'
             const errorMessage = userError instanceof Error ? userError.message : String(userError) || 'Unknown user loading error'
             
-            // Log as warning (not error) since user can still create account
-            console.warn('User profile not found (expected for new users):', JSON.stringify({ 
-              code: errorCode, 
-              message: errorMessage 
-            }))
+            // Only log as warning if it's NOT_FOUND (expected), otherwise log as info
+            if (errorCode === 'NOT_FOUND') {
+              // Expected for new users - profile doesn't exist yet
+            } else {
+              console.warn('User profile loading error (non-NOT_FOUND):', JSON.stringify({ 
+                code: errorCode, 
+                message: errorMessage,
+                userId: user.id,
+              }, null, 2))
+            }
             
             // Don't block - allow user to continue with account creation
             setIsCheckingAuth(false)
@@ -125,7 +129,7 @@ function CreateAccountContent() {
     checkAuth()
   }, [router])
 
-  // Handle email magic link submission (signup)
+  // Handle email OTP submission (signup)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -136,29 +140,29 @@ function CreateAccountContent() {
     setIsLoading(true)
 
     try {
-      // Build redirect URL with username if present
-      const callbackUrl = new URL(`${window.location.origin}/auth/callback`)
-      if (usernameFromQuery) {
-        callbackUrl.searchParams.set('username', usernameFromQuery)
-      }
-      
-      // Send magic link via email OTP (signup)
+      // Send email OTP (signup)
       // Supabase will create a new user if they don't exist
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim().toLowerCase(),
         options: {
-          emailRedirectTo: callbackUrl.toString(),
           shouldCreateUser: true, // Explicitly create user if doesn't exist
         },
       })
 
       if (error) throw error
 
-      toast.success(t('toast.magicLinkSent') || 'Magic link sent!', {
-        description: t('toast.checkEmailForLink') || 'Check your email to sign in.',
+      toast.success(t('toast.otpSent') || 'OTP sent successfully', {
+        description: t('toast.checkEmailForOtp') || 'Check your email for the verification code.',
       })
       
-      setStep('verify-email')
+      // Redirect to OTP verification page with email and username
+      const otpUrl = new URL('/verify-email-otp', window.location.origin)
+      otpUrl.searchParams.set('email', email.trim().toLowerCase())
+      otpUrl.searchParams.set('flow', 'signup') // Indicate this is a signup flow
+      if (usernameFromQuery) {
+        otpUrl.searchParams.set('username', usernameFromQuery)
+      }
+      router.push(otpUrl.toString())
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('toast.tryAgain')
       toast.error(t('toast.errorOccurred'), {
@@ -169,35 +173,6 @@ function CreateAccountContent() {
     }
   }
 
-  // Handle resend email
-  const handleResendEmail = async () => {
-    setIsResending(true)
-    try {
-      const callbackUrl = new URL(`${window.location.origin}/auth/callback`)
-      if (usernameFromQuery) {
-        callbackUrl.searchParams.set('username', usernameFromQuery)
-      }
-      
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: {
-          emailRedirectTo: callbackUrl.toString(),
-          shouldCreateUser: true,
-        },
-      })
-      
-      if (error) throw error
-      
-      toast.success(t('toast.emailResent') || 'Email resent!')
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An error occurred'
-      toast.error(t('toast.errorOccurred'), {
-        description: errorMessage,
-      })
-    } finally {
-      setIsResending(false)
-    }
-  }
 
   // Handle Google sign up
   const handleGoogleSignUp = async () => {
@@ -225,14 +200,6 @@ function CreateAccountContent() {
     }
   }
 
-  // Handle phone sign up navigation
-  const handlePhoneSignUp = () => {
-    const phoneUrl = new URL('/phone', window.location.origin)
-    if (usernameFromQuery) {
-      phoneUrl.searchParams.set('username', usernameFromQuery)
-    }
-    router.push(phoneUrl.toString())
-  }
 
 
   // Loading state with skeleton
@@ -270,107 +237,6 @@ function CreateAccountContent() {
     )
   }
 
-  // Verify email step
-  if (step === 'verify-email') {
-    return (
-      <div className="min-h-screen bg-white">
-        {/* Header */}
-        <header className="w-full">
-          <div className="container mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              {/* Logo */}
-              <div className="flex items-center">
-                <img
-                  src={HAADY_LOGO_URL}
-                  alt="Haady"
-                  className="w-12 h-12"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-3">
-                <Button
-                  onClick={handleLanguageToggle}
-                  size="lg"
-                  variant="outline"
-                  className="rounded-full bg-white hover:bg-gray-50 border-gray-200 shadow-sm hover:shadow-md w-12 h-12 p-0"
-                  title={locale === 'en' ? 'Switch to Arabic' : 'التبديل إلى الإنجليزية'}
-                  aria-label={locale === 'en' ? 'Switch to Arabic' : 'التبديل إلى الإنجليزية'}
-                >
-                  <Globe className="w-5 h-5 text-gray-700" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <main className="min-h-[calc(100vh-80px)] flex items-center justify-center py-8">
-          <div className="w-full max-w-md px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-            >
-              {/* Back Button */}
-              <div className="mb-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('email')
-                    resetForm()
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer"
-                >
-                  {isRTL ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
-                  <span>{t('auth.back') || 'Back'}</span>
-                </button>
-              </div>
-
-              {/* Email Icon */}
-              <div className="flex justify-center mb-6">
-                <div className="w-20 h-20 rounded-full bg-orange-100 flex items-center justify-center">
-                  <Mail className="w-10 h-10 text-orange-500" />
-                </div>
-              </div>
-
-              {/* Header */}
-              <h1 className={`text-2xl sm:text-3xl font-bold text-gray-900 mb-2 text-center`}>
-                {t('auth.checkYourEmail')}
-              </h1>
-              
-              <p className="text-gray-500 mb-2 text-center">
-                {t('auth.verificationSent') || "We've sent a verification link to"}
-              </p>
-              
-              <p className="text-gray-900 font-semibold mb-6 text-center">
-                {email}
-              </p>
-
-              <p className="text-gray-400 text-sm mb-8 text-center">
-                {t('auth.clickLink') || 'Click the link in your email to verify your account and complete your profile.'}
-              </p>
-
-              {/* Resend button */}
-              <div className="text-center">
-                <p className="text-gray-500 text-sm mb-2">
-                  {t('auth.didntReceive')}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleResendEmail}
-                  disabled={isResending}
-                  className="text-rose-600 hover:text-rose-700 font-semibold text-sm hover:underline disabled:opacity-50 cursor-pointer"
-                >
-                  {isResending ? (t('auth.resending') || 'Resending...') : (t('auth.resendEmail') || 'Resend email')}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        </main>
-      </div>
-    )
-  }
 
   // Main email form
   return (
@@ -486,6 +352,7 @@ function CreateAccountContent() {
                   enableValidation={true}
                   t={t}
                   successMessage={t('validation.emailValid') || 'Email is valid'}
+                  data-testid="signup-email-input"
                 />
               </motion.div>
 
@@ -500,6 +367,7 @@ function CreateAccountContent() {
                   variant="ghost"
                   disabled={isLoading || !email.trim() || !validateForm()}
                   className="w-full h-12 font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid="signup-submit-btn"
                 >
                   {isLoading ? (
                     <span className="flex items-center gap-2">
@@ -525,23 +393,13 @@ function CreateAccountContent() {
 
             {/* Social Login Buttons */}
             <div className="space-y-3">
-              {/* Continue with Phone */}
-              <button
-                type="button"
-                onClick={handlePhoneSignUp}
-                disabled={isLoading}
-                className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <Phone className="w-5 h-5" />
-                <span>{t('auth.continueWithPhone') || 'Continue with Phone'}</span>
-              </button>
-
               {/* Continue with Google */}
               <button
                 type="button"
                 onClick={handleGoogleSignUp}
                 disabled={isLoading}
                 className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                data-testid="signup-google-btn"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

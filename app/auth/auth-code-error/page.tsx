@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
+import { Button } from '@haady/ui'
 import { AlertCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -15,7 +15,7 @@ export default function AuthCodeError() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Gradient Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-amber-100 via-orange-200 via-50% to-orange-400" />
+      <div className="absolute inset-0 bg-gradient-to-br from-secondary via-secondary/80 via-50% to-primary/20" />
       <div className="absolute inset-0 bg-gradient-to-tr from-rose-200/40 via-transparent to-purple-200/30" />
 
       {/* Centered Card */}

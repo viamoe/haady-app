@@ -14,13 +14,43 @@ import { mapSupabaseError } from '@/server/db/errors';
 export async function getUserById(userId: string): Promise<{ data: Record<string, unknown> | null; error: AppError | null }> {
   try {
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profile')
       .select('id, full_name, username, avatar_url, birthdate, phone, country, city, profile_completion, points, level')
       .eq('id', userId)
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') {
+      // PGRST116 = "The result contains 0 rows" (not found)
+      // Also check for other "not found" indicators
+      if (error.code === 'PGRST116' || 
+          error.message?.toLowerCase().includes('no rows') ||
+          error.message?.toLowerCase().includes('not found')) {
+        return { data: null, error: null };
+      }
+      return { data: null, error: mapSupabaseError(error) };
+    }
+
+    return { data: data as Record<string, unknown>, error: null };
+  } catch (error) {
+    return { data: null, error: mapSupabaseError(error) };
+  }
+}
+
+/**
+ * Get user by username (client-side)
+ */
+export async function getUserByUsername(username: string): Promise<{ data: Record<string, unknown> | null; error: AppError | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('user_profile')
+      .select('id, full_name, username, avatar_url, birthdate, phone, country, city, profile_completion')
+      .eq('username', username.toLowerCase())
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116' || 
+          error.message?.toLowerCase().includes('no rows') ||
+          error.message?.toLowerCase().includes('not found')) {
         return { data: null, error: null };
       }
       return { data: null, error: mapSupabaseError(error) };
@@ -39,13 +69,17 @@ export async function getUserWithPreferences(userId: string): Promise<{ data: un
   try {
     // Get user
     const { data: user, error: userError } = await supabase
-      .from('users')
+      .from('user_profile')
       .select('*')
       .eq('id', userId)
       .single();
 
     if (userError) {
-      if (userError.code === 'PGRST116') {
+      // PGRST116 = "The result contains 0 rows" (not found)
+      // Also check for other "not found" indicators
+      if (userError.code === 'PGRST116' || 
+          userError.message?.toLowerCase().includes('no rows') ||
+          userError.message?.toLowerCase().includes('not found')) {
         return { data: null, error: null };
       }
       return { data: null, error: mapSupabaseError(userError) };
@@ -165,7 +199,7 @@ export async function updateUser(
 ): Promise<{ data: unknown | null; error: AppError | null }> {
   try {
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profile')
       .update({
         ...updates,
         updated_at: new Date().toISOString(),
@@ -193,7 +227,7 @@ export async function upsertUser(
 ): Promise<{ data: unknown | null; error: AppError | null }> {
   try {
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profile')
       .upsert({
         id: userId,
         ...userData,
@@ -225,7 +259,7 @@ export async function checkUsernameAvailability(
     }
 
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profile')
       .select('id')
       .eq('username', username.toLowerCase().trim())
       .maybeSingle();

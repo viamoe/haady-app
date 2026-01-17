@@ -10,7 +10,7 @@ export async function getUserById(userId: string): Promise<{ data: User | null; 
     const supabase = await createServerSupabase();
     
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profile')
       .select('*')
       .eq('id', userId)
       .single();
@@ -37,7 +37,7 @@ export async function getUserWithPreferences(userId: string): Promise<{ data: Us
     
     // Get user
     const { data: user, error: userError } = await supabase
-      .from('users')
+      .from('user_profile')
       .select('*')
       .eq('id', userId)
       .single();
@@ -80,7 +80,7 @@ export async function updateUser(
     const supabase = await createServerSupabase();
     
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profile')
       .update({
         ...updates,
         updated_at: new Date().toISOString(),
@@ -218,6 +218,7 @@ async function checkUsernameAvailabilityDirect(supabase: any, username: string):
 
 /**
  * Create or update user (for onboarding)
+ * Updates user_profile table directly
  */
 export async function upsertUser(
   userId: string,
@@ -227,7 +228,7 @@ export async function upsertUser(
     const supabase = await createServerSupabase();
     
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profile')
       .upsert({
         id: userId,
         ...userData,

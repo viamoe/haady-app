@@ -58,6 +58,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       hoverScale = defaultHoverScale,
       tapScale = defaultTapScale,
       disableAnimation = false,
+      disabled,
       ...props
     },
     ref
@@ -68,11 +69,13 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         data-slot="button"
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
+        disabled={disabled}
         {...props}
       />
     )
 
-    if (disableAnimation) {
+    // Don't animate if animation is disabled or button is disabled
+    if (disableAnimation || disabled) {
       return button
     }
 

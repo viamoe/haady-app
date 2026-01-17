@@ -28,16 +28,27 @@ export function mapSupabaseError(error: unknown): AppError {
     };
   }
 
-  const supabaseError = error as { code?: string; message?: string; details?: string };
+  const supabaseError = error as { code?: string; message?: string; details?: string; status?: number; statusCode?: number };
 
-  // Map known Supabase error codes
-  if (supabaseError.code === 'PGRST116' || supabaseError.code === '23505') {
+  // Handle HTTP status codes (404 = not found)
+  const httpStatus = supabaseError.status || supabaseError.statusCode
+  if (httpStatus === 404) {
     return {
       code: 'NOT_FOUND',
       message: 'Resource not found',
     };
   }
 
+  // Map known Supabase error codes
+  // PGRST116 = "The result contains 0 rows" (not found)
+  if (supabaseError.code === 'PGRST116') {
+    return {
+      code: 'NOT_FOUND',
+      message: 'Resource not found',
+    };
+  }
+
+  // 23505 = unique_violation (conflict)
   if (supabaseError.code === '23505') {
     return {
       code: 'CONFLICT',
@@ -45,6 +56,7 @@ export function mapSupabaseError(error: unknown): AppError {
     };
   }
 
+  // 42501 = insufficient_privilege (forbidden)
   if (supabaseError.code === '42501' || supabaseError.message?.includes('permission') || supabaseError.message?.includes('RLS')) {
     return {
       code: 'FORBIDDEN',
@@ -58,6 +70,23 @@ export function mapSupabaseError(error: unknown): AppError {
       code: 'FORBIDDEN',
       message: 'Access denied by security policy',
     };
+  }
+
+  // Handle PGRST205 (table not found in schema cache)
+  if (supabaseError.code === 'PGRST205' || supabaseError.message?.includes('Could not find the table')) {
+    return {
+      code: 'INTERNAL',
+      message: 'Database table not found. Please ensure migrations are applied.',
+    };
+  }
+
+  // Log unknown error codes for debugging (but don't expose to user)
+  if (supabaseError.code) {
+    console.warn('Unmapped Supabase error code:', JSON.stringify({
+      code: supabaseError.code,
+      message: supabaseError.message,
+      details: supabaseError.details,
+    }, null, 2))
   }
 
   // Default to internal error - never expose raw DB messages

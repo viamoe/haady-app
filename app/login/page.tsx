@@ -10,7 +10,7 @@ import { isAdminUser, getUserWithPreferences } from '@/lib/db/client-repos'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
 import { getNextOnboardingStep, ONBOARDING_PATHS } from '@/lib/onboarding'
-import { ArrowLeft, ArrowRight, Mail, Phone, Globe } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Mail, Globe } from 'lucide-react'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { useLocale } from '@/i18n/context'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -18,7 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 const HAADY_LOGO_URL = 'https://rovphhvuuxwbhgnsifto.supabase.co/storage/v1/object/public/assets/haady-icon.svg'
 
-type AuthStep = 'email' | 'verify-email'
+type AuthStep = 'email'
 
 function JoinHaadyContent() {
   const t = useTranslations()
@@ -33,7 +33,6 @@ function JoinHaadyContent() {
   
   const [step, setStep] = useState<AuthStep>('email')
   const [isLoading, setIsLoading] = useState(false)
-  const [isResending, setIsResending] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   
   // Get username from query params (from landing page)
@@ -75,7 +74,7 @@ function JoinHaadyContent() {
           }
           
           if (isAdmin) {
-            router.push('/home')
+            router.push('/')
             return
           }
 
@@ -121,7 +120,7 @@ function JoinHaadyContent() {
     checkAuth()
   }, [router])
 
-  // Handle email magic link submission
+  // Handle email OTP submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -132,27 +131,25 @@ function JoinHaadyContent() {
     setIsLoading(true)
 
     try {
-      // Build redirect URL with username if present
-      const callbackUrl = new URL(`${window.location.origin}/auth/callback`)
-      if (usernameFromQuery) {
-        callbackUrl.searchParams.set('username', usernameFromQuery)
-      }
-      
-      // Send magic link via email OTP
+      // Send email OTP
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim().toLowerCase(),
-        options: {
-          emailRedirectTo: callbackUrl.toString(),
-        },
       })
 
       if (error) throw error
 
-      toast.success(t('toast.magicLinkSent') || 'Magic link sent!', {
-        description: t('toast.checkEmailForLink') || 'Check your email to sign in.',
+      toast.success(t('toast.otpSent') || 'OTP sent successfully', {
+        description: t('toast.checkEmailForOtp') || 'Check your email for the verification code.',
       })
       
-      setStep('verify-email')
+      // Redirect to OTP verification page with email and username
+      const otpUrl = new URL('/verify-email-otp', window.location.origin)
+      otpUrl.searchParams.set('email', email.trim().toLowerCase())
+      otpUrl.searchParams.set('flow', 'login') // Indicate this is a login flow
+      if (usernameFromQuery) {
+        otpUrl.searchParams.set('username', usernameFromQuery)
+      }
+      router.push(otpUrl.toString())
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('toast.tryAgain')
       toast.error(t('toast.errorOccurred'), {
@@ -163,29 +160,6 @@ function JoinHaadyContent() {
     }
   }
 
-  // Handle resend email
-  const handleResendEmail = async () => {
-    setIsResending(true)
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      })
-      
-      if (error) throw error
-      
-      toast.success(t('toast.emailResent') || 'Email resent!')
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An error occurred'
-      toast.error(t('toast.errorOccurred'), {
-        description: errorMessage,
-      })
-    } finally {
-      setIsResending(false)
-    }
-  }
 
   // Handle Google sign in
   const handleGoogleSignIn = async () => {
@@ -213,10 +187,6 @@ function JoinHaadyContent() {
     }
   }
 
-  // Handle phone sign in navigation
-  const handlePhoneSignIn = () => {
-    router.push('/phone')
-  }
 
 
   // Loading state with skeleton
@@ -254,107 +224,6 @@ function JoinHaadyContent() {
     )
   }
 
-  // Verify email step
-  if (step === 'verify-email') {
-    return (
-      <div className="min-h-screen bg-white">
-        {/* Header */}
-        <header className="w-full">
-          <div className="container mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              {/* Logo */}
-              <div className="flex items-center">
-                <img
-                  src={HAADY_LOGO_URL}
-                  alt="Haady"
-                  className="w-12 h-12"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-3">
-                <Button
-                  onClick={handleLanguageToggle}
-                  size="lg"
-                  variant="outline"
-                  className="rounded-full bg-white hover:bg-gray-50 border-gray-200 shadow-sm hover:shadow-md w-12 h-12 p-0"
-                  title={locale === 'en' ? 'Switch to Arabic' : 'التبديل إلى الإنجليزية'}
-                  aria-label={locale === 'en' ? 'Switch to Arabic' : 'التبديل إلى الإنجليزية'}
-                >
-                  <Globe className="w-5 h-5 text-gray-700" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <main className="min-h-[calc(100vh-80px)] flex items-center justify-center py-8">
-          <div className="w-full max-w-md px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-            >
-              {/* Back Button */}
-              <div className="mb-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('email')
-                    resetForm()
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer"
-                >
-                  {isRTL ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
-                  <span>{t('auth.back') || 'Back'}</span>
-                </button>
-              </div>
-
-              {/* Email Icon */}
-              <div className="flex justify-center mb-6">
-                <div className="w-20 h-20 rounded-full bg-orange-100 flex items-center justify-center">
-                  <Mail className="w-10 h-10 text-orange-500" />
-                </div>
-              </div>
-
-              {/* Header */}
-              <h1 className={`text-2xl sm:text-3xl font-bold text-gray-900 mb-2 text-center`}>
-                {t('auth.checkYourEmail')}
-              </h1>
-              
-              <p className="text-gray-500 mb-2 text-center">
-                {t('auth.magicLinkSentTo') || "We've sent a magic link to"}
-              </p>
-              
-              <p className="text-gray-900 font-semibold mb-6 text-center">
-                {email}
-              </p>
-
-              <p className="text-gray-400 text-sm mb-8 text-center">
-                {t('auth.clickLinkToSignIn') || 'Click the link in your email to sign in. The link will expire in 1 hour.'}
-              </p>
-
-              {/* Resend button */}
-              <div className="text-center">
-                <p className="text-gray-500 text-sm mb-2">
-                  {t('auth.didntReceive')}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleResendEmail}
-                  disabled={isResending}
-                  className="text-rose-600 hover:text-rose-700 font-semibold text-sm hover:underline disabled:opacity-50 cursor-pointer"
-                >
-                  {isResending ? (t('auth.resending') || 'Resending...') : (t('auth.resendEmail') || 'Resend email')}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        </main>
-      </div>
-    )
-  }
 
   // Main email form
   return (
@@ -437,6 +306,7 @@ function JoinHaadyContent() {
                   enableValidation={true}
                   t={t}
                   successMessage={t('validation.emailValid')}
+                  data-testid="login-email-input"
                 />
               </motion.div>
 
@@ -451,6 +321,7 @@ function JoinHaadyContent() {
                   variant="ghost"
                   disabled={isLoading || !email.trim() || !validateForm()}
                   className="w-full h-12 font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid="login-submit-btn"
                 >
                   {isLoading ? (
                     <span className="flex items-center gap-2">
@@ -476,23 +347,13 @@ function JoinHaadyContent() {
 
             {/* Social Login Buttons */}
             <div className="space-y-3">
-              {/* Continue with Phone */}
-              <button
-                type="button"
-                onClick={handlePhoneSignIn}
-                disabled={isLoading}
-                className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <Phone className="w-5 h-5" />
-                <span>{t('auth.continueWithPhone') || 'Continue with Phone'}</span>
-              </button>
-
               {/* Continue with Google */}
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={isLoading}
                 className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                data-testid="login-google-btn"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

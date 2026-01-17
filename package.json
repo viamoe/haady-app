@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",
+    "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
     "db:inspect": "supabase db inspect",
     "db:tables": "supabase db inspect --schema public | grep -E '^Table|^table' || supabase db inspect --schema public",
     "db:rls": "supabase db inspect --schema public | grep -A 20 'Row Level Security' || echo 'Run: supabase db inspect --schema public'",
@@ -48,7 +52,6 @@
     "next": "canary",
     "next-intl": "^4.5.7",
     "next-themes": "^0.4.6",
-    "zod": "^3.23.8",
     "react": "19.2.0",
     "react-country-flag": "^3.1.0",
     "react-day-picker": "^9.11.3",
@@ -58,9 +61,11 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
-    "vaul": "^1.1.2"
+    "vaul": "^1.1.2",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
