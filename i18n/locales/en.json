@@ -169,7 +169,11 @@
     "personality": "Personality",
     "favoriteBrands": "Favorite Brands",
     "favoriteColors": "Favorite Colors",
-    "editProfile": "Edit Profile"
+    "editProfile": "Edit Profile",
+    "signupBannerTitle": "Send gifts without needing an address!",
+    "signupBannerSubtitle": "Join Haady and start sending & receiving gifts",
+    "signUpFree": "Sign Up Free",
+    "signUpAndSendGift": "Sign Up & Send a Gift"
   },
   "settings": {
     "title": "Settings",

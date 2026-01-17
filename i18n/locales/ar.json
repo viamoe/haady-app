@@ -169,7 +169,11 @@
     "personality": "الصفات الشخصية",
     "favoriteBrands": "العلامات المفضلة",
     "favoriteColors": "الألوان المفضلة",
-    "editProfile": "تعديل الملف الشخصي"
+    "editProfile": "تعديل الملف الشخصي",
+    "signupBannerTitle": "أرسل هدية بدون الحاجة لعنوان!",
+    "signupBannerSubtitle": "انضم لـ Haady وابدأ بإرسال واستقبال الهدايا",
+    "signUpFree": "سجّل الآن",
+    "signUpAndSendGift": "سجّل وأرسل هدية"
   },
   "settings": {
     "title": "الإعدادات",

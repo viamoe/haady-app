@@ -295,6 +295,33 @@ export default function ProfilePage() {
         showLoginButton={false}
       />
 
+      {/* Sign Up Banner for unauthenticated users */}
+      {!currentUser && (
+        <div className="bg-gradient-to-r from-primary to-primary/80 text-white">
+          <div className="container mx-auto px-6 py-4">
+            <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+              <div className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <Gift className="w-8 h-8 flex-shrink-0" />
+                <div className={isRTL ? 'text-right' : 'text-left'}>
+                  <p className="font-semibold text-lg">
+                    {t('profile.signupBannerTitle')}
+                  </p>
+                  <p className="text-white/80 text-sm">
+                    {t('profile.signupBannerSubtitle')}
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => router.push('/create-account')}
+                className="bg-white text-primary hover:bg-white/90 font-semibold px-6 whitespace-nowrap"
+              >
+                {t('profile.signUpFree')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="min-h-[calc(100vh-80px)] flex items-center justify-center py-8">
         <div className="w-full max-w-lg px-6">
@@ -458,8 +485,24 @@ export default function ProfilePage() {
               </Button>
             </div>
           )}
+
+          {/* Extra padding for fixed bottom CTA on mobile */}
+          {!currentUser && <div className="h-24 sm:hidden" />}
         </div>
       </main>
+
+      {/* Fixed Bottom CTA for unauthenticated users (mobile) */}
+      {!currentUser && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 sm:hidden z-50">
+          <Button
+            onClick={() => router.push('/create-account')}
+            className={`w-full h-14 text-lg font-semibold ${isRTL ? 'flex-row-reverse' : ''}`}
+          >
+            <Gift className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+            {t('profile.signUpAndSendGift')}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
