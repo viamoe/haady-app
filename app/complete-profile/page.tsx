@@ -338,11 +338,10 @@ function CompleteProfileContent() {
   }
 
   const validatePhone = (phone: string): string | null => {
-    if (!phone) return null // Phone is optional
+    if (!phone || !phone.trim()) return t('validation.phoneRequired') || 'Phone number is required'
     const phoneDigits = phone.replace(/\D/g, '') // Remove non-digits
-    if (phoneDigits.length < 7) return t('validation.phoneMinLength')
-    if (phoneDigits.length > 15) return t('validation.phoneMaxLength')
-    if (!/^[0-9]+$/.test(phoneDigits)) return t('validation.phoneInvalid')
+    if (phoneDigits.length < 7) return t('validation.phoneMinLength') || 'Phone number must be at least 7 digits'
+    if (phoneDigits.length > 15) return t('validation.phoneMaxLength') || 'Phone number must be at most 15 digits'
     return null
   }
 
@@ -720,9 +719,18 @@ function CompleteProfileContent() {
                   placeholder={t('auth.fullNamePlaceholder')}
                   value={profile.fullName}
                   data-testid="profile-fullname-input"
+                  autoComplete="name"
                   onChange={(e) => {
                     setProfile(prev => ({ ...prev, fullName: e.target.value }))
                     if (touched.fullName) validateField('fullName')
+                  }}
+                  onInput={(e) => {
+                    // Handle autocomplete which may bypass onChange
+                    const target = e.target as HTMLInputElement
+                    if (target.value !== profile.fullName) {
+                      setProfile(prev => ({ ...prev, fullName: target.value }))
+                      setTouched(prev => ({ ...prev, fullName: true }))
+                    }
                   }}
                   onBlur={() => handleBlur('fullName')}
                   className={`${getInputClassName('fullName')} ${isFieldValid('fullName') ? (isRTL ? 'pl-10' : 'pr-10') : ''}`}
@@ -823,9 +831,25 @@ function CompleteProfileContent() {
                   placeholder={t('auth.phonePlaceholder')}
                   value={profile.phone}
                   data-testid="profile-phone-input"
+                  autoComplete="tel-national"
                   onChange={(e) => {
-                    setProfile(prev => ({ ...prev, phone: e.target.value }))
+                    // Strip country code if autocomplete added it (e.g., +966 555... -> 555...)
+                    let phoneValue = e.target.value
+                    // Remove common country code prefixes that autocomplete might add
+                    phoneValue = phoneValue.replace(/^\+?\d{1,3}[\s-]?(?=\d{7,})/, '')
+                    setProfile(prev => ({ ...prev, phone: phoneValue }))
                     if (touched.phone) validateField('phone')
+                  }}
+                  onInput={(e) => {
+                    // Handle autocomplete which may bypass onChange
+                    const target = e.target as HTMLInputElement
+                    let phoneValue = target.value
+                    // Remove common country code prefixes that autocomplete might add
+                    phoneValue = phoneValue.replace(/^\+?\d{1,3}[\s-]?(?=\d{7,})/, '')
+                    if (phoneValue !== profile.phone) {
+                      setProfile(prev => ({ ...prev, phone: phoneValue }))
+                      setTouched(prev => ({ ...prev, phone: true }))
+                    }
                   }}
                   onBlur={() => handleBlur('phone')}
                   className={`${getInputClassName('phone')} ${isFieldValid('phone') ? (isRTL ? 'pl-10' : 'pr-10') : ''} ${isRTL ? 'text-right placeholder:text-right' : 'text-left placeholder:text-left'}`}
