@@ -116,3 +116,13 @@ export function createAuthError(message: string = 'Authentication required'): Ap
     message,
   };
 }
+
+/**
+ * Creates a not found error
+ */
+export function createNotFoundError(message: string = 'Resource not found'): AppError {
+  return {
+    code: 'NOT_FOUND',
+    message,
+  };
+}

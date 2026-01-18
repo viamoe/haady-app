@@ -110,9 +110,24 @@ export const colorsRequestSchema = z.object({
 })
 
 /**
+ * Schema for profile update API request
+ */
+export const profileUpdateRequestSchema = z.object({
+  full_name: z.string().optional().nullable(),
+  username: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  country: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  birthdate: z.string().optional().nullable(),
+  onboarding_step: z.number().optional(),
+  is_onboarded: z.boolean().optional(),
+})
+
+/**
  * Type exports for TypeScript
  */
 export type ClaimUsernameRequest = z.infer<typeof claimUsernameRequestSchema>
 export type TraitsRequest = z.infer<typeof traitsRequestSchema>
 export type BrandsRequest = z.infer<typeof brandsRequestSchema>
 export type ColorsRequest = z.infer<typeof colorsRequestSchema>
+export type ProfileUpdateRequest = z.infer<typeof profileUpdateRequestSchema>

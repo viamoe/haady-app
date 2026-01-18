@@ -1,6 +1,28 @@
-import { createServerSupabase, createPublicSupabase } from '@/lib/supabase/server';
-import { mapSupabaseError, createAuthError, createValidationError, type AppError } from './errors';
+import { createServerSupabase, createPublicSupabase, createServiceRoleSupabase } from '@/lib/supabase/server';
+import { mapSupabaseError, createAuthError, createValidationError, createNotFoundError, type AppError } from './errors';
 import type { User, UserWithPreferences } from './types';
+
+/**
+ * Public profile fields exposed to unauthenticated users
+ */
+export interface PublicProfile {
+  id: string;
+  full_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  birthdate: string | null;
+  country: string | null;
+  city: string | null;
+}
+
+/**
+ * User preferences (traits, brands, colors) for public display
+ */
+export interface UserPreferences {
+  traits: Array<{ id: string; name: string; emoji: string | null }>;
+  brands: Array<{ id: string; name: string; logo_url: string | null }>;
+  colors: Array<{ id: string; name: string; hex: string }>;
+}
 
 /**
  * Get user by ID
@@ -242,6 +264,112 @@ export async function upsertUser(
     }
 
     return { data: data as User, error: null };
+  } catch (error) {
+    return { data: null, error: mapSupabaseError(error) };
+  }
+}
+
+/**
+ * Get public profile by username
+ * 
+ * RLS IMPACT: Uses service role to bypass RLS for public profile reads.
+ * This is safe because:
+ * - Only exposes limited public fields (no email, phone, etc.)
+ * - Read-only operation
+ * - Used for public profile sharing feature
+ */
+export async function getPublicProfileByUsername(username: string): Promise<{ data: PublicProfile | null; error: AppError | null }> {
+  try {
+    if (!username || username.trim().length === 0) {
+      return { data: null, error: createValidationError('Username is required') };
+    }
+
+    const supabase = createServiceRoleSupabase();
+    const normalizedUsername = username.toLowerCase().trim();
+    
+    const { data, error } = await supabase
+      .from('user_profile')
+      .select('id, full_name, username, avatar_url, birthdate, country, city')
+      .eq('username', normalizedUsername)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return { data: null, error: createNotFoundError('User not found') };
+      }
+      return { data: null, error: mapSupabaseError(error) };
+    }
+
+    return { data: data as PublicProfile, error: null };
+  } catch (error) {
+    return { data: null, error: mapSupabaseError(error) };
+  }
+}
+
+/**
+ * Get user preferences (traits, brands, colors) by username
+ * 
+ * RLS IMPACT: Uses service role to bypass RLS for public profile reads.
+ * This is safe because:
+ * - Only exposes preference selections (not sensitive data)
+ * - Read-only operation
+ * - Used for public profile sharing feature
+ */
+export async function getUserPreferencesByUsername(username: string): Promise<{ data: UserPreferences | null; error: AppError | null }> {
+  try {
+    if (!username || username.trim().length === 0) {
+      return { data: null, error: createValidationError('Username is required') };
+    }
+
+    const supabase = createServiceRoleSupabase();
+    const normalizedUsername = username.toLowerCase().trim();
+    
+    // First get user ID from username
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profile')
+      .select('id')
+      .eq('username', normalizedUsername)
+      .single();
+
+    if (profileError || !profile) {
+      if (profileError?.code === 'PGRST116') {
+        return { data: null, error: createNotFoundError('User not found') };
+      }
+      return { data: null, error: mapSupabaseError(profileError) };
+    }
+
+    const userId = profile.id;
+
+    // Fetch all master data and user selections in parallel
+    const [
+      traitsResult,
+      brandsResult,
+      colorsResult,
+      userTraitsResult,
+      userBrandsResult,
+      userColorsResult,
+    ] = await Promise.all([
+      supabase.from('traits_master').select('id, name, emoji').eq('is_active', true),
+      supabase.from('brands_master').select('id, name, logo_url'),
+      supabase.from('colors_master').select('id, name, hex').eq('is_active', true),
+      supabase.from('user_traits').select('trait_id').eq('user_id', userId),
+      supabase.from('user_brands').select('brand_id').eq('user_id', userId),
+      supabase.from('user_colors').select('color_id').eq('user_id', userId),
+    ]);
+
+    // Map user selections to full data
+    const userTraitIds = new Set(userTraitsResult.data?.map(t => t.trait_id) || []);
+    const userBrandIds = new Set(userBrandsResult.data?.map(b => b.brand_id) || []);
+    const userColorIds = new Set(userColorsResult.data?.map(c => c.color_id) || []);
+
+    const traits = (traitsResult.data || []).filter(t => userTraitIds.has(t.id));
+    const brands = (brandsResult.data || []).filter(b => userBrandIds.has(b.id));
+    const colors = (colorsResult.data || []).filter(c => userColorIds.has(c.id));
+
+    return {
+      data: { traits, brands, colors },
+      error: null,
+    };
   } catch (error) {
     return { data: null, error: mapSupabaseError(error) };
   }

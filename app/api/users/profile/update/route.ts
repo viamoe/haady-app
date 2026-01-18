@@ -1,17 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabase } from '@/lib/supabase/server'
-import { z } from 'zod'
-
-const profileUpdateSchema = z.object({
-  full_name: z.string().optional().nullable(),
-  username: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
-  country: z.string().optional().nullable(),
-  city: z.string().optional().nullable(),
-  birthdate: z.string().optional().nullable(),
-  onboarding_step: z.number().optional(),
-  is_onboarded: z.boolean().optional(),
-})
+import { upsertUser } from '@/server/db'
+import { successResponse, errorResponse, authErrorResponse, validationErrorResponse } from '@/server/api/response'
+import { profileUpdateRequestSchema } from '@/server/api/validation'
 
 /**
  * POST /api/users/profile/update
@@ -19,7 +9,7 @@ const profileUpdateSchema = z.object({
  * Authenticated endpoint to update the current user's profile.
  * Uses server-side Supabase client with proper session handling.
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const supabase = await createServerSupabase()
     
@@ -27,50 +17,39 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
-      return NextResponse.json(
-        { ok: false, error: { code: 'AUTH', message: 'Not authenticated' } },
-        { status: 401 }
-      )
+      return authErrorResponse('Not authenticated')
     }
 
     // Parse and validate request body
-    const body = await request.json()
-    const validationResult = profileUpdateSchema.safeParse(body)
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return validationErrorResponse('Invalid JSON in request body')
+    }
+    
+    const validationResult = profileUpdateRequestSchema.safeParse(body)
     
     if (!validationResult.success) {
-      return NextResponse.json(
-        { ok: false, error: { code: 'VALIDATION', message: 'Invalid profile data', details: validationResult.error.errors } },
-        { status: 400 }
-      )
+      const errors = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+      return validationErrorResponse(`Validation failed: ${errors}`, validationResult.error.errors)
     }
 
     const profileData = validationResult.data
 
-    // Upsert the user profile
-    const { data: profile, error: upsertError } = await supabase
-      .from('user_profile')
-      .upsert({
-        id: user.id,
-        ...profileData,
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
+    // Upsert the user profile using repo
+    const result = await upsertUser(user.id, profileData)
 
-    if (upsertError) {
-      console.error('Error upserting profile:', upsertError)
-      return NextResponse.json(
-        { ok: false, error: { code: 'INTERNAL', message: 'Failed to update profile', details: upsertError.message } },
-        { status: 500 }
-      )
+    if (result.error) {
+      return errorResponse(result.error)
     }
 
-    return NextResponse.json({ ok: true, data: profile })
+    return successResponse(result.data)
   } catch (error) {
     console.error('Unexpected error in profile update API:', error)
-    return NextResponse.json(
-      { ok: false, error: { code: 'INTERNAL', message: 'An unexpected error occurred' } },
-      { status: 500 }
-    )
+    return errorResponse({
+      code: 'INTERNAL',
+      message: 'An unexpected error occurred',
+    })
   }
 }
