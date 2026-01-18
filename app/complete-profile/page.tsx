@@ -65,6 +65,45 @@ interface FieldErrors {
   city?: string | null
 }
 
+/**
+ * Strips country code from phone number input
+ * Handles various autocomplete formats like:
+ * - +20 01158397714
+ * - +20-01158397714
+ * - +20 - 01158397714
+ * - 002001158397714
+ * - 201158397714
+ */
+function stripCountryCode(rawValue: string, selectedCountryCode: string): string {
+  // First, extract just the digits
+  const digitsOnly = rawValue.replace(/\D/g, '')
+  
+  // Get country code digits (e.g., "+20" -> "20", "+966" -> "966")
+  const countryDigits = selectedCountryCode.replace(/\D/g, '')
+  
+  if (!countryDigits || !digitsOnly) {
+    return digitsOnly
+  }
+  
+  // Check if number starts with country code (with or without leading zeros)
+  // Handle: 20..., 0020...
+  if (digitsOnly.startsWith('00' + countryDigits)) {
+    return digitsOnly.slice(2 + countryDigits.length)
+  }
+  
+  if (digitsOnly.startsWith(countryDigits)) {
+    // Make sure we're not stripping part of the local number
+    // Only strip if remaining digits form a valid local number (7+ digits typically)
+    const remaining = digitsOnly.slice(countryDigits.length)
+    if (remaining.length >= 7) {
+      return remaining
+    }
+  }
+  
+  // Return digits as-is if no country code detected
+  return digitsOnly
+}
+
 function CompleteProfileContent() {
   const t = useTranslations()
   const { isRTL, locale, setLocale } = useLocale()
@@ -845,19 +884,15 @@ function CompleteProfileContent() {
                   data-testid="profile-phone-input"
                   autoComplete="tel-national"
                   onChange={(e) => {
-                    // Strip country code if autocomplete added it (e.g., +966 555... -> 555...)
-                    let phoneValue = e.target.value
-                    // Remove common country code prefixes that autocomplete might add
-                    phoneValue = phoneValue.replace(/^\+?\d{1,3}[\s-]?(?=\d{7,})/, '')
+                    // Strip country code if autocomplete added it (e.g., +20 01158397714 -> 01158397714)
+                    const phoneValue = stripCountryCode(e.target.value, profile.phoneCountryCode)
                     setProfile(prev => ({ ...prev, phone: phoneValue }))
                     if (touched.phone) validateField('phone')
                   }}
                   onInput={(e) => {
                     // Handle autocomplete which may bypass onChange
                     const target = e.target as HTMLInputElement
-                    let phoneValue = target.value
-                    // Remove common country code prefixes that autocomplete might add
-                    phoneValue = phoneValue.replace(/^\+?\d{1,3}[\s-]?(?=\d{7,})/, '')
+                    const phoneValue = stripCountryCode(target.value, profile.phoneCountryCode)
                     if (phoneValue !== profile.phone) {
                       setProfile(prev => ({ ...prev, phone: phoneValue }))
                       setTouched(prev => ({ ...prev, phone: true }))
